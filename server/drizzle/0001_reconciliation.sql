@@ -10,13 +10,13 @@ DROP TYPE "user_role_old";
 ALTER TABLE "users" ADD COLUMN "name" varchar(200);
 UPDATE "users" SET "name" = trim(concat_ws(' ', "first_name", "last_name"));
 ALTER TABLE "users" ALTER COLUMN "name" SET NOT NULL;
+DROP INDEX IF EXISTS "users_email_uidx";
 UPDATE "users" SET "email" = lower(trim("email"));
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM "users" GROUP BY lower("email") HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'Cannot reconcile users: duplicate case-insensitive email exists';
   END IF;
 END $$;
-DROP INDEX IF EXISTS "users_email_uidx";
 CREATE UNIQUE INDEX "users_email_lower_uidx" ON "users" USING btree (lower("email"));
 ALTER TABLE "users" ADD CONSTRAINT "users_email_lowercase_chk" CHECK ("email" = lower("email"));
 

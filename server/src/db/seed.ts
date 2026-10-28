@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createDb } from "./client";
+import { closeDb, createDb } from "./client";
 import {
   coachServices,
   coaches,
@@ -29,26 +29,33 @@ export function normalizeSeedEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+export const seedServiceDefinitions = [
+  { id: seedIds.serviceYoga, name: "Yoga", description: "Mobility and balance" },
+  { id: seedIds.serviceStrength, name: "Strength Training", description: "Personal strength coaching" },
+] as const;
+
 async function seed(): Promise<void> {
   validateSeedEnvironment();
 
-  const { db, client } = createDb();
-  const now = new Date("2026-01-01T00:00:00.000Z");
-  const adminPassword = Bun.env.SEED_ADMIN_PASSWORD!;
-  const customerPassword = Bun.env.SEED_CUSTOMER_PASSWORD!;
-  // Explicit credentials are required. Existing seed-user password hashes are never reset on reruns.
-  const [adminHash, customerHash] = await Promise.all([
-    Bun.password.hash(adminPassword, { algorithm: "argon2id" }),
-    Bun.password.hash(customerPassword, { algorithm: "argon2id" }),
-  ]);
-
+  let connection: ReturnType<typeof createDb> | undefined;
   try {
+    connection = createDb();
+    const { db } = connection;
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const adminPassword = Bun.env.SEED_ADMIN_PASSWORD!;
+    const customerPassword = Bun.env.SEED_CUSTOMER_PASSWORD!;
+    // Explicit credentials are required. Existing seed-user password hashes are never reset on reruns.
+    const [adminHash, customerHash] = await Promise.all([
+      Bun.password.hash(adminPassword, { algorithm: "argon2id" }),
+      Bun.password.hash(customerPassword, { algorithm: "argon2id" }),
+    ]);
+
     await db.transaction(async (tx) => {
-    const expectedUsers = [
+      const expectedUsers = [
       { id: seedIds.adminUser, email: normalizeSeedEmail("admin@example.com") },
       { id: seedIds.customerUser, email: normalizeSeedEmail("customer@example.com") },
     ];
-    for (const expected of expectedUsers) {
+      for (const expected of expectedUsers) {
       const byId = await tx.query.users.findFirst({ where: eq(users.id, expected.id) });
       if (byId && byId.email !== expected.email) {
         throw new Error(`Seed user ${expected.id} has unexpected email ${byId.email}`);
@@ -58,30 +65,27 @@ async function seed(): Promise<void> {
       if (conflict && conflict.id !== expected.id) {
         throw new Error(`Seed email ${email} belongs to unexpected user ${conflict.id}`);
       }
-    }
-    const existingMember = await tx.query.members.findFirst({
+      }
+      const existingMember = await tx.query.members.findFirst({
       where: eq(members.memberNumber, "MEM-0001"),
     });
-    if (existingMember && existingMember.id !== seedIds.member) {
+      if (existingMember && existingMember.id !== seedIds.member) {
       throw new Error(`Seed member number MEM-0001 belongs to unexpected member ${existingMember.id}`);
-    }
-    const memberById = await tx.query.members.findFirst({ where: eq(members.id, seedIds.member) });
-    if (memberById && (memberById.userId !== seedIds.customerUser || memberById.memberNumber !== "MEM-0001")) {
+      }
+      const memberById = await tx.query.members.findFirst({ where: eq(members.id, seedIds.member) });
+      if (memberById && (memberById.userId !== seedIds.customerUser || memberById.memberNumber !== "MEM-0001")) {
       throw new Error(`Seed member ${seedIds.member} has conflicting identity fields`);
-    }
-    for (const [name, id] of [
-      ["Yoga", seedIds.serviceYoga],
-      ["Strength Training", seedIds.serviceStrength],
-    ] as const) {
-      const service = await tx.query.services.findFirst({ where: eq(services.name, name) });
-      if (service && service.id !== id) {
-        throw new Error(`Seed service ${name} belongs to unexpected service ${service.id}`);
       }
-      const serviceById = await tx.query.services.findFirst({ where: eq(services.id, id) });
-      if (serviceById && serviceById.name !== name) {
-        throw new Error(`Seed service ${id} has unexpected name ${serviceById.name}`);
+      for (const expectedService of seedServiceDefinitions) {
+      const service = await tx.query.services.findFirst({ where: eq(services.name, expectedService.name) });
+      if (service && service.id !== expectedService.id) {
+        throw new Error(`Seed service ${expectedService.name} belongs to unexpected service ${service.id}`);
       }
-    }
+      const serviceById = await tx.query.services.findFirst({ where: eq(services.id, expectedService.id) });
+      if (serviceById && serviceById.name !== expectedService.name) {
+        throw new Error(`Seed service ${expectedService.id} has unexpected name ${serviceById.name}`);
+      }
+      }
 
     // Passwords are intentionally omitted from updates so reruns cannot reset credentials.
     await tx
@@ -157,21 +161,19 @@ async function seed(): Promise<void> {
       .set({ name: "Taylor Reed", phone: "+1-555-0102", specialty: "Strength Training", bio: null, status: "active", updatedAt: now })
       .where(eq(coaches.id, seedIds.coachTwo));
 
+    for (const service of seedServiceDefinitions) {
+      await tx.insert(services).values(service).onConflictDoUpdate({
+        target: services.id,
+        set: { name: service.name, description: service.description, active: true, updatedAt: now },
+      });
+    }
     await tx
-      .insert(services)
+      .insert(coachServices)
       .values([
-        { id: seedIds.serviceYoga, name: "Yoga", description: "Mobility and balance" },
-        { id: seedIds.serviceStrength, name: "Strength Training", description: "Personal strength coaching" },
+        { coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga },
+        { coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength },
       ])
-      .onConflictDoUpdate({ target: services.id, set: { name: "Yoga", description: "Mobility and balance", active: true, updatedAt: now } });
-    await tx
-      .update(services)
-      .set({ name: "Strength Training", description: "Personal strength coaching", active: true, updatedAt: now })
-      .where(eq(services.id, seedIds.serviceStrength));
-    await tx.insert(coachServices).values([
-      { coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga },
-      { coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength },
-    ]).onConflictDoNothing();
+      .onConflictDoNothing();
 
     await tx.insert(packages).values({ id: seedIds.packageStarter, name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "75.00", totalSessions: 5, validityDays: 45, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "75.00", totalSessions: 5, validityDays: 45, status: "active", updatedAt: now } });
     await tx.insert(packages).values({ id: seedIds.packageUnlimited, name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "199.00", totalSessions: 30, validityDays: 30, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "199.00", totalSessions: 30, validityDays: 30, status: "active", updatedAt: now } });
@@ -190,7 +192,7 @@ async function seed(): Promise<void> {
     await tx.update(schedules).set({ title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: new Date(now.getTime() + 48 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 49 * 60 * 60 * 1000), capacity: 8, status: "available", updatedAt: now }).where(eq(schedules.id, seedIds.scheduleStrength));
     });
   } finally {
-    await client.end({ timeout: 5 });
+    await closeDb(connection?.client ?? null);
   }
 }
 
