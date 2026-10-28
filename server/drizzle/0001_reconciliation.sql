@@ -51,16 +51,35 @@ ALTER TABLE "schedules" ADD COLUMN "title" varchar(160);
 UPDATE "schedules" SET "title" = 'Schedule ' || substr("id"::text, 1, 8) WHERE "title" IS NULL;
 ALTER TABLE "schedules" ALTER COLUMN "title" SET NOT NULL;
 
-ALTER TYPE "subscription_status" ADD VALUE IF NOT EXISTS 'held';
-ALTER TYPE "reschedule_status" ADD VALUE IF NOT EXISTS 'held';
-ALTER TYPE "schedule_status" RENAME VALUE 'scheduled' TO 'available';
-ALTER TYPE "schedule_status" RENAME VALUE 'completed' TO 'full';
+ALTER TYPE "subscription_status" RENAME TO "subscription_status_old";
+CREATE TYPE "subscription_status" AS ENUM ('pending', 'held', 'active', 'expired', 'cancelled');
+ALTER TABLE "subscriptions" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "subscriptions" ALTER COLUMN "status" TYPE "subscription_status" USING "status"::text::"subscription_status";
+ALTER TABLE "subscriptions" ALTER COLUMN "status" SET DEFAULT 'pending';
+DROP TYPE "subscription_status_old";
+
+ALTER TYPE "reschedule_status" RENAME TO "reschedule_status_old";
+CREATE TYPE "reschedule_status" AS ENUM ('pending', 'held', 'approved', 'rejected', 'cancelled');
+ALTER TABLE "reschedule_requests" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "reschedule_requests" ALTER COLUMN "status" TYPE "reschedule_status" USING "status"::text::"reschedule_status";
+ALTER TABLE "reschedule_requests" ALTER COLUMN "status" SET DEFAULT 'pending';
+DROP TYPE "reschedule_status_old";
+
+ALTER TYPE "schedule_status" RENAME TO "schedule_status_old";
+CREATE TYPE "schedule_status" AS ENUM ('available', 'full', 'cancelled');
+ALTER TABLE "schedules" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "schedules" ALTER COLUMN "status" TYPE "schedule_status" USING CASE "status"::text WHEN 'scheduled' THEN 'available' WHEN 'completed' THEN 'full' ELSE "status"::text END::"schedule_status";
+ALTER TABLE "schedules" ALTER COLUMN "status" SET DEFAULT 'available';
+DROP TYPE "schedule_status_old";
+-- The partial predicate depends on booking_status. Remove it before replacing the enum.
+DROP INDEX IF EXISTS "bookings_member_schedule_active_uidx";
 ALTER TYPE "booking_status" RENAME TO "booking_status_old";
 CREATE TYPE "booking_status" AS ENUM ('booked', 'cancelled', 'attended', 'no_show');
 ALTER TABLE "bookings" ALTER COLUMN "status" DROP DEFAULT;
 ALTER TABLE "bookings" ALTER COLUMN "status" TYPE "booking_status" USING CASE "status"::text WHEN 'pending' THEN 'booked' WHEN 'confirmed' THEN 'booked' WHEN 'completed' THEN 'attended' ELSE "status"::text END::"booking_status";
 ALTER TABLE "bookings" ALTER COLUMN "status" SET DEFAULT 'booked';
 DROP TYPE "booking_status_old";
+CREATE UNIQUE INDEX "bookings_member_schedule_active_uidx" ON "bookings" USING btree ("member_id", "schedule_id") WHERE "bookings"."status" = 'booked';
 
 ALTER TABLE "payments" ALTER COLUMN "subscription_id" DROP NOT NULL;
 ALTER TABLE "payments" ADD COLUMN "method" varchar(64);
