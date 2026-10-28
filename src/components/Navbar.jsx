@@ -40,11 +40,6 @@ export default function Navbar() {
               className="text-soft-border hover:text-primary transition-colors font-medium">
               Harga Paket
             </a>
-            <a
-              href="#jadwal"
-              className="text-soft-border hover:text-primary transition-colors font-medium">
-              Jadwal Latihan
-            </a>
 
             {/* Dropdown Menu "Lainnya" */}
             <div className="relative">
