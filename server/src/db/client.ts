@@ -18,12 +18,15 @@ export function createDb(databaseUrl = databaseUrlFromEnv()): DatabaseConnection
   return { client, db: drizzle(client, { schema }) };
 }
 
-// Constructing postgres-js does not open a socket; the connection is acquired on first query.
-// Keeping this nullable makes importing application modules safe in tests without a database.
-const defaultConnection = databaseUrlFromEnv() ? createDb() : null;
-export const client = defaultConnection?.client ?? null;
-export const db = defaultConnection?.db ?? null;
+/** Explicit connections are preferred; this optional convenience connection is created only on access. */
+let lazyDefaultConnection: DatabaseConnection | null | undefined;
+export function getDefaultDb(): DatabaseConnection | null {
+  if (lazyDefaultConnection === undefined) {
+    lazyDefaultConnection = databaseUrlFromEnv() ? createDb() : null;
+  }
+  return lazyDefaultConnection;
+}
 
-export async function closeDb(connection: Sql | null = client): Promise<void> {
+export async function closeDb(connection: Sql | null): Promise<void> {
   if (connection) await connection.end({ timeout: 5 });
 }

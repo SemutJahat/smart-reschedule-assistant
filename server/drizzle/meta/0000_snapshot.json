@@ -1,5 +1,5 @@
 {
-  "id": "88a12ece-988c-4595-a37d-668461102768",
+  "id": "d2436b81-45ee-443f-b8e1-7e81e48cf4d8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -39,7 +39,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'booked'"
+          "default": "'pending'"
         },
         "booked_at": {
           "name": "booked_at",
@@ -87,7 +87,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"bookings\".\"status\" = 'booked'",
+          "where": "\"bookings\".\"status\" in ('pending', 'confirmed')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -297,23 +297,11 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "name": {
-          "name": "name",
-          "type": "varchar(200)",
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "phone": {
-          "name": "phone",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "specialty": {
-          "name": "specialty",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": false
         },
         "bio": {
           "name": "bio",
@@ -345,23 +333,37 @@
         }
       },
       "indexes": {
-        "coaches_status_idx": {
-          "name": "coaches_status_idx",
+        "coaches_user_uidx": {
+          "name": "coaches_user_uidx",
           "columns": [
             {
-              "expression": "status",
+              "expression": "user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "coaches_user_id_users_id_fk": {
+          "name": "coaches_user_id_users_id_fk",
+          "tableFrom": "coaches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -379,12 +381,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "member_number": {
-          "name": "member_number",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "user_id": {
           "name": "user_id",
           "type": "uuid",
@@ -394,36 +390,6 @@
         "phone": {
           "name": "phone",
           "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "emergency_contact": {
-          "name": "emergency_contact",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "weight": {
-          "name": "weight",
-          "type": "numeric(6, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "height": {
-          "name": "height",
-          "type": "numeric(6, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "blood_type": {
-          "name": "blood_type",
-          "type": "varchar(8)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "medical_history": {
-          "name": "medical_history",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -458,21 +424,6 @@
         }
       },
       "indexes": {
-        "members_member_number_uidx": {
-          "name": "members_member_number_uidx",
-          "columns": [
-            {
-              "expression": "member_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "members_user_uidx": {
           "name": "members_user_uidx",
           "columns": [
@@ -507,16 +458,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "members_weight_nonnegative_chk": {
-          "name": "members_weight_nonnegative_chk",
-          "value": "\"members\".\"weight\" >= 0"
-        },
-        "members_height_nonnegative_chk": {
-          "name": "members_height_nonnegative_chk",
-          "value": "\"members\".\"height\" >= 0"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.packages": {
@@ -533,12 +475,6 @@
         "name": {
           "name": "name",
           "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category": {
-          "name": "category",
-          "type": "varchar(80)",
           "primaryKey": false,
           "notNull": true
         },
@@ -631,7 +567,7 @@
           "name": "subscription_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "amount": {
           "name": "amount",
@@ -647,14 +583,14 @@
           "notNull": true,
           "default": "'pending'"
         },
-        "method": {
-          "name": "method",
+        "provider": {
+          "name": "provider",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "reference": {
-          "name": "reference",
+        "provider_reference": {
+          "name": "provider_reference",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
@@ -711,11 +647,17 @@
           "method": "btree",
           "with": {}
         },
-        "payments_reference_uidx": {
-          "name": "payments_reference_uidx",
+        "payments_provider_reference_uidx": {
+          "name": "payments_provider_reference_uidx",
           "columns": [
             {
-              "expression": "reference",
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_reference",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -886,8 +828,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "member_id": {
-          "name": "member_id",
+        "requested_by": {
+          "name": "requested_by",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -904,14 +846,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "customer_message": {
-          "name": "customer_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "admin_note": {
-          "name": "admin_note",
+        "reason": {
+          "name": "reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -923,12 +859,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'pending'"
-        },
-        "reviewed_by": {
-          "name": "reviewed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "reviewed_at": {
           "name": "reviewed_at",
@@ -997,12 +927,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "reschedule_requests_member_id_members_id_fk": {
-          "name": "reschedule_requests_member_id_members_id_fk",
+        "reschedule_requests_requested_by_users_id_fk": {
+          "name": "reschedule_requests_requested_by_users_id_fk",
           "tableFrom": "reschedule_requests",
-          "tableTo": "members",
+          "tableTo": "users",
           "columnsFrom": [
-            "member_id"
+            "requested_by"
           ],
           "columnsTo": [
             "id"
@@ -1035,19 +965,6 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
-        },
-        "reschedule_requests_reviewed_by_users_id_fk": {
-          "name": "reschedule_requests_reviewed_by_users_id_fk",
-          "tableFrom": "reschedule_requests",
-          "tableTo": "users",
-          "columnsFrom": [
-            "reviewed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1071,12 +988,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "title": {
-          "name": "title",
-          "type": "varchar(160)",
-          "primaryKey": false,
-          "notNull": true
         },
         "coach_id": {
           "name": "coach_id",
@@ -1115,7 +1026,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'available'"
+          "default": "'scheduled'"
         },
         "created_at": {
           "name": "created_at",
@@ -1468,9 +1379,15 @@
           "notNull": true,
           "default": "'customer'"
         },
-        "name": {
-          "name": "name",
-          "type": "varchar(200)",
+        "first_name": {
+          "name": "first_name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
@@ -1519,9 +1436,10 @@
       "name": "booking_status",
       "schema": "public",
       "values": [
-        "booked",
+        "pending",
+        "confirmed",
         "cancelled",
-        "attended",
+        "completed",
         "no_show"
       ]
     },
@@ -1567,7 +1485,6 @@
       "schema": "public",
       "values": [
         "pending",
-        "held",
         "approved",
         "rejected",
         "cancelled"
@@ -1577,9 +1494,9 @@
       "name": "schedule_status",
       "schema": "public",
       "values": [
-        "available",
-        "full",
-        "cancelled"
+        "scheduled",
+        "cancelled",
+        "completed"
       ]
     },
     "public.subscription_status": {
@@ -1587,7 +1504,6 @@
       "schema": "public",
       "values": [
         "pending",
-        "held",
         "active",
         "expired",
         "cancelled"
@@ -1598,7 +1514,8 @@
       "schema": "public",
       "values": [
         "admin",
-        "customer"
+        "customer",
+        "coach"
       ]
     }
   },

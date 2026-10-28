@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   numeric,
@@ -65,7 +66,10 @@ export const users = pgTable(
     name: varchar("name", { length: 200 }).notNull(),
     ...timestamps,
   },
-  (table) => [uniqueIndex("users_email_uidx").on(table.email)],
+  (table) => [
+    uniqueIndex("users_email_lower_uidx").on(sql`lower(${table.email})`),
+    check("users_email_lowercase_chk", sql`${table.email} = lower(${table.email})`),
+  ],
 );
 
 export const members = pgTable(
@@ -196,6 +200,7 @@ export const subscriptions = pgTable(
   },
   (table) => [
     index("subscriptions_member_idx").on(table.memberId),
+    uniqueIndex("subscriptions_member_id_uidx").on(table.memberId, table.id),
     check("subscriptions_total_sessions_nonnegative_chk", sql`${table.totalSessions} >= 0`),
     check("subscriptions_used_sessions_nonnegative_chk", sql`${table.usedSessions} >= 0`),
     check(
@@ -227,6 +232,11 @@ export const schedules = pgTable(
   (table) => [
     index("schedules_coach_start_idx").on(table.coachId, table.startsAt),
     index("schedules_service_start_idx").on(table.serviceId, table.startsAt),
+    foreignKey({
+      columns: [table.coachId, table.serviceId],
+      foreignColumns: [coachServices.coachId, coachServices.serviceId],
+      name: "schedules_coach_service_fk",
+    }),
     check("schedules_capacity_positive_chk", sql`${table.capacity} > 0`),
     check("schedules_end_after_start_chk", sql`${table.endsAt} > ${table.startsAt}`),
   ],
@@ -257,6 +267,12 @@ export const bookings = pgTable(
       .where(sql`${table.status} = 'booked'`),
     index("bookings_schedule_status_idx").on(table.scheduleId, table.status),
     index("bookings_member_idx").on(table.memberId),
+    uniqueIndex("bookings_id_member_schedule_uidx").on(table.id, table.memberId, table.scheduleId),
+    foreignKey({
+      columns: [table.memberId, table.subscriptionId],
+      foreignColumns: [subscriptions.memberId, subscriptions.id],
+      name: "bookings_member_subscription_fk",
+    }),
   ],
 );
 
@@ -286,6 +302,14 @@ export const rescheduleRequests = pgTable(
   (table) => [
     index("reschedule_requests_booking_idx").on(table.bookingId),
     index("reschedule_requests_status_idx").on(table.status),
+    uniqueIndex("reschedule_requests_active_booking_uidx")
+      .on(table.bookingId)
+      .where(sql`${table.status} in ('pending', 'held')`),
+    foreignKey({
+      columns: [table.bookingId, table.memberId, table.fromScheduleId],
+      foreignColumns: [bookings.id, bookings.memberId, bookings.scheduleId],
+      name: "reschedule_requests_booking_member_from_schedule_fk",
+    }),
     check("reschedule_requests_different_schedule_chk", sql`${table.fromScheduleId} <> ${table.toScheduleId}`),
   ],
 );
@@ -301,7 +325,7 @@ export const payments = pgTable(
       .references(() => subscriptions.id, { onDelete: "restrict" }),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     status: paymentStatus("status").notNull().default("pending"),
-    method: varchar("method", { length: 64 }).notNull(),
+    method: varchar("method", { length: 64 }),
     reference: varchar("reference", { length: 255 }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     ...timestamps,
@@ -311,6 +335,11 @@ export const payments = pgTable(
     index("payments_subscription_idx").on(table.subscriptionId),
     uniqueIndex("payments_reference_uidx").on(table.reference),
     check("payments_amount_nonnegative_chk", sql`${table.amount} >= 0`),
+    foreignKey({
+      columns: [table.memberId, table.subscriptionId],
+      foreignColumns: [subscriptions.memberId, subscriptions.id],
+      name: "payments_member_subscription_fk",
+    }),
   ],
 );
 
