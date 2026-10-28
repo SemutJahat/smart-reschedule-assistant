@@ -3,7 +3,6 @@ import ScrollButton from "../../components/ScrollButton";
 import Kelas from "./Kelas";
 import Event from "./Event";
 import HargaPaket from "./HargaPaket";
-import Penjadwalan from "./Penjadwalan";
 
 export default function Beranda() {
   return (
@@ -87,7 +86,6 @@ export default function Beranda() {
         <Kelas />
         <Event />
         <HargaPaket />
-        <Penjadwalan />
         <ScrollButton />
       </main>
     </div>
