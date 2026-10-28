@@ -35,32 +35,14 @@ async function seed(): Promise<void> {
           email: "admin@example.com",
           passwordHash: adminHash,
           role: "admin",
-          firstName: "Admin",
-          lastName: "User",
+          name: "Admin User",
         },
         {
           id: seedIds.customerUser,
           email: "customer@example.com",
           passwordHash: customerHash,
           role: "customer",
-          firstName: "Demo",
-          lastName: "Customer",
-        },
-        {
-          id: seedIds.coachOneUser,
-          email: "coach.one@example.com",
-          passwordHash: customerHash,
-          role: "coach",
-          firstName: "Alex",
-          lastName: "Morgan",
-        },
-        {
-          id: seedIds.coachTwoUser,
-          email: "coach.two@example.com",
-          passwordHash: customerHash,
-          role: "coach",
-          firstName: "Taylor",
-          lastName: "Reed",
+          name: "Demo Customer",
         },
       ])
       .onConflictDoUpdate({
@@ -69,24 +51,41 @@ async function seed(): Promise<void> {
           email: sql`excluded.email`,
           passwordHash: sql`excluded.password_hash`,
           role: sql`excluded.role`,
-          firstName: sql`excluded.first_name`,
-          lastName: sql`excluded.last_name`,
+          name: sql`excluded.name`,
           updatedAt: now,
         },
       });
 
     await tx
       .insert(members)
-      .values({ id: seedIds.member, userId: seedIds.customerUser, status: "active" })
+      .values({
+        id: seedIds.member,
+        memberNumber: "MEM-0001",
+        userId: seedIds.customerUser,
+        phone: "+1-555-0100",
+        status: "active",
+      })
       .onConflictDoUpdate({ target: members.userId, set: { status: "active", updatedAt: now } });
 
     await tx
       .insert(coaches)
       .values([
-        { id: seedIds.coachOne, userId: seedIds.coachOneUser, status: "active" },
-        { id: seedIds.coachTwo, userId: seedIds.coachTwoUser, status: "active" },
+        {
+          id: seedIds.coachOne,
+          name: "Alex Morgan",
+          phone: "+1-555-0101",
+          specialty: "Yoga",
+          status: "active",
+        },
+        {
+          id: seedIds.coachTwo,
+          name: "Taylor Reed",
+          phone: "+1-555-0102",
+          specialty: "Strength Training",
+          status: "active",
+        },
       ])
-      .onConflictDoUpdate({ target: coaches.userId, set: { status: "active", updatedAt: now } });
+      .onConflictDoUpdate({ target: coaches.id, set: { status: "active", updatedAt: now } });
 
     await tx
       .insert(services)
@@ -110,6 +109,7 @@ async function seed(): Promise<void> {
         {
           id: seedIds.packageStarter,
           name: "Starter 5",
+          category: "personal_training",
           description: "Five coached sessions",
           price: "75.00",
           totalSessions: 5,
@@ -119,6 +119,7 @@ async function seed(): Promise<void> {
         {
           id: seedIds.packageUnlimited,
           name: "Unlimited 30",
+          category: "personal_training",
           description: "Unlimited sessions for thirty days",
           price: "199.00",
           totalSessions: 30,
@@ -157,8 +158,8 @@ async function seed(): Promise<void> {
         subscriptionId: seedIds.subscription,
         amount: "75.00",
         status: "paid",
-        provider: "seed",
-        providerReference: "seed-payment-0001",
+        method: "seed",
+        reference: "seed-payment-0001",
         paidAt: now,
       })
       .onConflictDoUpdate({
@@ -171,24 +172,26 @@ async function seed(): Promise<void> {
       .values([
         {
           id: seedIds.scheduleYoga,
+          title: "Morning Yoga",
           coachId: seedIds.coachOne,
           serviceId: seedIds.serviceYoga,
           startsAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
           endsAt: new Date(now.getTime() + 25 * 60 * 60 * 1000),
           capacity: 10,
-          status: "scheduled",
+          status: "available",
         },
         {
           id: seedIds.scheduleStrength,
+          title: "Evening Strength Training",
           coachId: seedIds.coachTwo,
           serviceId: seedIds.serviceStrength,
           startsAt: new Date(now.getTime() + 48 * 60 * 60 * 1000),
           endsAt: new Date(now.getTime() + 49 * 60 * 60 * 1000),
           capacity: 8,
-          status: "scheduled",
+          status: "available",
         },
       ])
-      .onConflictDoUpdate({ target: schedules.id, set: { status: "scheduled", updatedAt: now } });
+      .onConflictDoUpdate({ target: schedules.id, set: { status: "available", updatedAt: now } });
   });
 
   // Verify the member upsert remains linked to the expected customer in local runs.

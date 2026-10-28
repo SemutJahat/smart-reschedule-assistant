@@ -19,30 +19,31 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 };
 
-export const userRole = pgEnum("user_role", ["admin", "customer", "coach"]);
+export const userRole = pgEnum("user_role", ["admin", "customer"]);
 export const memberStatus = pgEnum("member_status", ["active", "inactive", "suspended"]);
 export const coachStatus = pgEnum("coach_status", ["active", "inactive", "suspended"]);
 export const packageStatus = pgEnum("package_status", ["active", "inactive", "archived"]);
 export const subscriptionStatus = pgEnum("subscription_status", [
   "pending",
+  "held",
   "active",
   "expired",
   "cancelled",
 ]);
 export const scheduleStatus = pgEnum("schedule_status", [
-  "scheduled",
+  "available",
+  "full",
   "cancelled",
-  "completed",
 ]);
 export const bookingStatus = pgEnum("booking_status", [
-  "pending",
-  "confirmed",
+  "booked",
   "cancelled",
-  "completed",
+  "attended",
   "no_show",
 ]);
 export const rescheduleStatus = pgEnum("reschedule_status", [
   "pending",
+  "held",
   "approved",
   "rejected",
   "cancelled",
@@ -61,8 +62,7 @@ export const users = pgTable(
     email: varchar("email", { length: 320 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     role: userRole("role").notNull().default("customer"),
-    firstName: varchar("first_name", { length: 100 }).notNull(),
-    lastName: varchar("last_name", { length: 100 }).notNull(),
+    name: varchar("name", { length: 200 }).notNull(),
     ...timestamps,
   },
   (table) => [uniqueIndex("users_email_uidx").on(table.email)],
@@ -72,15 +72,26 @@ export const members = pgTable(
   "members",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    memberNumber: varchar("member_number", { length: 32 }).notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     phone: varchar("phone", { length: 32 }),
+    emergencyContact: text("emergency_contact"),
+    weight: numeric("weight", { precision: 6, scale: 2 }),
+    height: numeric("height", { precision: 6, scale: 2 }),
+    bloodType: varchar("blood_type", { length: 8 }),
+    medicalHistory: text("medical_history"),
     status: memberStatus("status").notNull().default("active"),
     joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
     ...timestamps,
   },
-  (table) => [uniqueIndex("members_user_uidx").on(table.userId)],
+  (table) => [
+    uniqueIndex("members_member_number_uidx").on(table.memberNumber),
+    uniqueIndex("members_user_uidx").on(table.userId),
+    check("members_weight_nonnegative_chk", sql`${table.weight} >= 0`),
+    check("members_height_nonnegative_chk", sql`${table.height} >= 0`),
+  ],
 );
 
 export const refreshTokens = pgTable(
@@ -105,14 +116,14 @@ export const coaches = pgTable(
   "coaches",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 200 }).notNull(),
+    phone: varchar("phone", { length: 32 }),
+    specialty: varchar("specialty", { length: 120 }),
     bio: text("bio"),
     status: coachStatus("status").notNull().default("active"),
     ...timestamps,
   },
-  (table) => [uniqueIndex("coaches_user_uidx").on(table.userId)],
+  (table) => [index("coaches_status_idx").on(table.status)],
 );
 
 export const services = pgTable(
@@ -150,6 +161,7 @@ export const packages = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     name: varchar("name", { length: 120 }).notNull(),
+    category: varchar("category", { length: 80 }).notNull(),
     description: text("description"),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
     totalSessions: integer("total_sessions").notNull(),
@@ -199,6 +211,7 @@ export const schedules = pgTable(
   "schedules",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    title: varchar("title", { length: 160 }).notNull(),
     coachId: uuid("coach_id")
       .notNull()
       .references(() => coaches.id, { onDelete: "restrict" }),
@@ -208,7 +221,7 @@ export const schedules = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     capacity: integer("capacity").notNull().default(1),
-    status: scheduleStatus("status").notNull().default("scheduled"),
+    status: scheduleStatus("status").notNull().default("available"),
     ...timestamps,
   },
   (table) => [
@@ -232,7 +245,7 @@ export const bookings = pgTable(
     subscriptionId: uuid("subscription_id")
       .notNull()
       .references(() => subscriptions.id, { onDelete: "restrict" }),
-    status: bookingStatus("status").notNull().default("pending"),
+    status: bookingStatus("status").notNull().default("booked"),
     bookedAt: timestamp("booked_at", { withTimezone: true }).defaultNow().notNull(),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     ...timestamps,
@@ -241,7 +254,7 @@ export const bookings = pgTable(
     // PostgreSQL partial unique indexes enforce one active booking per member/session.
     uniqueIndex("bookings_member_schedule_active_uidx")
       .on(table.memberId, table.scheduleId)
-      .where(sql`${table.status} in ('pending', 'confirmed')`),
+      .where(sql`${table.status} = 'booked'`),
     index("bookings_schedule_status_idx").on(table.scheduleId, table.status),
     index("bookings_member_idx").on(table.memberId),
   ],
@@ -254,17 +267,19 @@ export const rescheduleRequests = pgTable(
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "cascade" }),
-    requestedBy: uuid("requested_by")
+    memberId: uuid("member_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => members.id, { onDelete: "restrict" }),
     fromScheduleId: uuid("from_schedule_id")
       .notNull()
       .references(() => schedules.id, { onDelete: "restrict" }),
     toScheduleId: uuid("to_schedule_id")
       .notNull()
       .references(() => schedules.id, { onDelete: "restrict" }),
-    reason: text("reason"),
+    customerMessage: text("customer_message"),
+    adminNote: text("admin_note"),
     status: rescheduleStatus("status").notNull().default("pending"),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -283,19 +298,18 @@ export const payments = pgTable(
       .notNull()
       .references(() => members.id, { onDelete: "restrict" }),
     subscriptionId: uuid("subscription_id")
-      .notNull()
       .references(() => subscriptions.id, { onDelete: "restrict" }),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     status: paymentStatus("status").notNull().default("pending"),
-    provider: varchar("provider", { length: 64 }),
-    providerReference: varchar("provider_reference", { length: 255 }),
+    method: varchar("method", { length: 64 }).notNull(),
+    reference: varchar("reference", { length: 255 }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("payments_member_idx").on(table.memberId),
     index("payments_subscription_idx").on(table.subscriptionId),
-    uniqueIndex("payments_provider_reference_uidx").on(table.provider, table.providerReference),
+    uniqueIndex("payments_reference_uidx").on(table.reference),
     check("payments_amount_nonnegative_chk", sql`${table.amount} >= 0`),
   ],
 );
