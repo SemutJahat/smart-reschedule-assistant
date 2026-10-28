@@ -33,15 +33,46 @@ function parseNodeEnvironment(value: string | undefined): NodeEnvironment {
 }
 
 function parseCorsOrigin(value: string | undefined): string | string[] {
-  if (value === undefined || value.trim() === "") return defaultConfig.corsOrigin;
+  if (value === undefined) return defaultConfig.corsOrigin;
 
   const origins = value
     .split(",")
     .map((origin) => origin.trim())
-    .filter(Boolean);
+    .map(validateCorsOrigin);
 
-  if (origins.length === 0) return defaultConfig.corsOrigin;
+  // Wildcard CORS is intentionally not supported: the service should only
+  // expose browser responses to explicitly configured HTTP(S) origins.
   return origins.length === 1 ? origins[0] : origins;
+}
+
+function validateCorsOrigin(origin: string): string {
+  if (origin === "*") {
+    throw new Error("CORS_ORIGIN does not allow the wildcard origin '*'");
+  }
+  if (origin === "") {
+    throw new Error("CORS_ORIGIN cannot contain empty origins");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    throw new Error(`CORS_ORIGIN contains an invalid origin: ${origin}`);
+  }
+
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.hostname === "" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error(`CORS_ORIGIN contains an invalid origin: ${origin}`);
+  }
+
+  return parsed.origin;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
