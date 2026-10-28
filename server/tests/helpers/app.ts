@@ -6,6 +6,8 @@ export function createTestApp(overrides: Partial<AppConfig> = {}) {
     nodeEnv: "test",
     port: 3000,
     corsOrigin: "http://localhost:5173",
+    jwtSecret: "test-jwt-secret",
+    jwtRefreshSecret: "test-refresh-secret",
     ...overrides,
   });
 }

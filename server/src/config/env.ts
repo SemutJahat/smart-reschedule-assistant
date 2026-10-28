@@ -4,12 +4,16 @@ export interface AppConfig {
   nodeEnv: NodeEnvironment;
   port: number;
   corsOrigin: string | string[];
+  jwtSecret: string;
+  jwtRefreshSecret: string;
 }
 
 const defaultConfig: AppConfig = {
   nodeEnv: "development",
   port: 3000,
   corsOrigin: "http://localhost:5173",
+  jwtSecret: "development-jwt-secret-change-me",
+  jwtRefreshSecret: "development-refresh-secret-change-me",
 };
 
 function parsePort(value: string | undefined): number {
@@ -76,9 +80,14 @@ function validateCorsOrigin(origin: string): string {
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
+  const jwtSecret = env.JWT_SECRET?.trim() || (env.NODE_ENV === "production" ? "" : defaultConfig.jwtSecret);
+  const jwtRefreshSecret = env.JWT_REFRESH_SECRET?.trim() || (env.NODE_ENV === "production" ? "" : defaultConfig.jwtRefreshSecret);
+  if (!jwtSecret || !jwtRefreshSecret) throw new Error("JWT_SECRET and JWT_REFRESH_SECRET are required in production");
   return {
     nodeEnv: parseNodeEnvironment(env.NODE_ENV),
     port: parsePort(env.PORT),
     corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
+    jwtSecret,
+    jwtRefreshSecret,
   };
 }
