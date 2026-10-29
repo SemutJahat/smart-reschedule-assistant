@@ -69,6 +69,13 @@ export interface CatalogBookingRecord {
   id: string;
   scheduleId: string;
   status: "booked" | "cancelled" | "attended" | "no_show";
+  /** Optional fields are populated when this is the shared booking collection. */
+  memberId?: string;
+  subscriptionId?: string;
+  bookedAt?: Date;
+  cancelledAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface CatalogRepository {
@@ -89,6 +96,8 @@ export interface CatalogRepository {
   insertSchedule(input: Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">): Promise<ScheduleRecord>;
   updateSchedule(id: string, patch: Partial<Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">>): Promise<ScheduleRecord | null>;
   countBooked(scheduleId: string): Promise<number>;
+  /** In-memory repositories may expose the canonical collection shared with bookings. */
+  bookings?: CatalogBookingRecord[];
 }
 
 type CatalogArrays = {
@@ -120,8 +129,12 @@ export class InMemoryCatalogRepository implements CatalogRepository {
   readonly coachServices: { coachId: string; serviceId: string }[] = [];
   readonly packages: PackageRecord[] = [];
   readonly schedules: ScheduleRecord[] = [];
-  readonly bookings: CatalogBookingRecord[] = [];
+  readonly bookings: CatalogBookingRecord[];
   private transactionTail: Promise<void> = Promise.resolve();
+
+  constructor(bookings: CatalogBookingRecord[] = []) {
+    this.bookings = bookings;
+  }
 
   async transaction<T>(fn: (tx: CatalogRepository) => Promise<T>): Promise<T> {
     let release!: () => void;

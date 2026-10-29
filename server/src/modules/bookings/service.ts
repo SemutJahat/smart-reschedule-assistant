@@ -22,12 +22,13 @@ export class BookingService {
   async create(user: AuthUser, input: { scheduleId: string; subscriptionId: string }) {
     const member = await this.authRepository.findMemberByUserId(user.userId);
     if (!member) throw new AppError("NOT_FOUND", "Member not found", 404);
-    return this.repository.transaction(async (tx) => {
+    try {
+      return await this.repository.transaction(async (tx) => {
       // Lock in a stable order. PostgreSQL uses the advisory lock in the repository
       // as an additional guard for writers that do not lock the same rows.
       const schedule = await tx.findSchedule(input.scheduleId, true);
       if (!schedule) throw new AppError("NOT_FOUND", "Schedule not found", 404);
-      if (schedule.status !== "available") throw new AppError("CONFLICT", "Schedule is not available", 409);
+      if (schedule.status === "cancelled") throw new AppError("CONFLICT", "Schedule is cancelled", 409);
       const subscription = await tx.findSubscription(input.subscriptionId, true);
       if (!subscription) throw new AppError("NOT_FOUND", "Subscription not found", 404);
       if (subscription.memberId !== member.id) throw new AppError("FORBIDDEN", "Subscription does not belong to the member", 403);
@@ -40,9 +41,18 @@ export class BookingService {
       if (await tx.findActiveByMemberSchedule(member.id, schedule.id, true)) throw new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
       const created = await tx.insertBooking({ memberId: member.id, scheduleId: schedule.id, subscriptionId: subscription.id });
       await tx.updateSubscriptionUsed(subscription.id, subscription.usedSessions + 1);
-      if (count + 1 >= schedule.capacity) await tx.updateScheduleStatus(schedule.id, "full");
+      await tx.updateScheduleStatus(schedule.id, count + 1 >= schedule.capacity ? "full" : "available");
       return serialize(created);
-    });
+      });
+    } catch (error) {
+      const databaseError = error as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+      const code = databaseError.code ?? databaseError.cause?.code;
+      const constraint = databaseError.constraint ?? databaseError.cause?.constraint;
+      if (code === "23505" && constraint === "bookings_member_schedule_active_uidx") {
+        throw new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
+      }
+      throw error;
+    }
   }
 
   async listOwn(user: AuthUser, filters: Omit<BookingFilters, "memberId"> = {}) {

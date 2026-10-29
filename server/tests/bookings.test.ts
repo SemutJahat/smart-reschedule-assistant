@@ -2,6 +2,7 @@ import { beforeEach, expect, test } from "bun:test";
 import { InMemoryAuthRepository } from "../src/modules/auth/repository";
 import { InMemoryCatalogRepository } from "../src/modules/coaches/schema";
 import { InMemoryPaymentRepository } from "../src/modules/payments/repository";
+import { InMemoryBookingRepository } from "../src/modules/bookings/repository";
 import { createTestApp } from "./helpers/app";
 
 const json = (value: unknown, token?: string) => ({ headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(value) });
@@ -45,6 +46,9 @@ test("books once, increments quota, and rejects duplicate/over-capacity races", 
   expect(results.filter((response) => response.status === 200)).toHaveLength(1);
   expect(results.filter((response) => response.status === 409)).toHaveLength(1);
   expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(1);
+  expect(catalog.bookings.filter((item) => item.status === "booked")).toHaveLength(1);
+  expect(await catalog.countBooked(scheduleId)).toBe(1);
+  expect((await catalog.findSchedule(scheduleId))?.status).toBe("full");
   expect((await app.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId }, customerToken) }))).status).toBe(409);
 });
 
@@ -76,6 +80,7 @@ test("lists only own bookings with status/date filters and authorizes cancellati
   expect(cancelled.status).toBe(200);
   expect((await cancelled.clone().json()).status).toBe("cancelled");
   expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(0);
+  expect((await catalog.findSchedule(scheduleId))?.status).toBe("available");
   const ownBooking = await app.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId }, customerToken) }));
   const ownBookingBody = await ownBooking.json() as { id: string };
   expect((await app.handle(new Request(`http://localhost/bookings/${ownBookingBody.id}/cancel`, { method: "PATCH", ...json({}, customerToken) }))).status).toBe(200);
@@ -86,8 +91,16 @@ test("failed booking transaction rolls back its writes", async () => {
   catalog.schedules[0]!.capacity = 1;
   const original = payments.subscriptions.find((item) => item.id === subscriptionId)!;
   const before = original.usedSessions;
-  const failing = await app.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId: "00000000-0000-4000-8000-000000000000" }, customerToken) }));
-  expect(failing.status).toBe(404);
+  class FailingBookingRepository extends InMemoryBookingRepository {
+    override async updateSubscriptionUsed(_id: string, _usedSessions: number): Promise<null> {
+      throw new Error("quota update failed");
+    }
+  }
+  const failingRepository = new FailingBookingRepository(catalog, payments, catalog.bookings);
+  const failingApp = createTestApp({}, auth, catalog, payments, failingRepository);
+  const failing = await failingApp.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId }, customerToken) }));
+  expect(failing.status).toBe(500);
   expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(before);
-  expect((await app.handle(new Request("http://localhost/bookings/me", { headers: { authorization: `Bearer ${customerToken}` } }))).json()).resolves.toEqual([]);
+  expect(catalog.bookings).toHaveLength(0);
+  expect(catalog.schedules[0]?.status).toBe("available");
 });

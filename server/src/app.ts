@@ -52,7 +52,7 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   const catalogRepository = options.catalogRepository ?? (db ? createCatalogRepository(db.db) : new InMemoryCatalogRepository());
   const paymentRepository = options.paymentRepository ?? (db ? createPaymentRepository(db.db) : new InMemoryPaymentRepository(catalogRepository));
-  const bookingRepository = options.bookingRepository ?? (db ? createBookingRepository(db.db) : new InMemoryBookingRepository(catalogRepository, paymentRepository));
+  const bookingRepository = options.bookingRepository ?? (db ? createBookingRepository(db.db) : new InMemoryBookingRepository(catalogRepository, paymentRepository, catalogRepository.bookings));
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };

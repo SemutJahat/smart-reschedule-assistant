@@ -36,6 +36,13 @@
       "when": 1793238155179,
       "tag": "0004_steady_ogun",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793242232929,
+      "tag": "0005_booking_capacity_trigger",
+      "breakpoints": true
     }
   ]
 }

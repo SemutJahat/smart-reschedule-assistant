@@ -2,7 +2,7 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { bookings, schedules, subscriptions } from "../../db/schema";
 import { createId } from "../../shared/ids";
-import type { CatalogRepository, ScheduleRecord } from "../coaches/schema";
+import type { CatalogBookingRecord, CatalogRepository, ScheduleRecord } from "../coaches/schema";
 import type { PaymentRepository, SubscriptionRecord } from "../payments/schema";
 import type { BookingFilters, BookingPatch, BookingRecord, BookingRepository, NewBooking } from "./schema";
 
@@ -96,10 +96,12 @@ function cloneSubscription(item: SubscriptionRecord): SubscriptionRecord { retur
 
 /** In-memory implementation intentionally serializes the whole transaction. */
 export class InMemoryBookingRepository implements BookingRepository {
-  readonly bookings: BookingRecord[] = [];
+  readonly bookings: BookingRecord[];
   private transactionTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly catalog: CatalogRepository, private readonly payments: PaymentRepository) {}
+  constructor(private readonly catalog: CatalogRepository, private readonly payments: PaymentRepository, sharedBookings?: CatalogBookingRecord[]) {
+    this.bookings = (sharedBookings ?? catalog.bookings ?? []) as BookingRecord[];
+  }
 
   async transaction<T>(fn: (tx: BookingRepository) => Promise<T>): Promise<T> {
     let release!: () => void;
