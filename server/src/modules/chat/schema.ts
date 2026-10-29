@@ -35,6 +35,7 @@ export interface ChatSessionRecord {
   id: string;
   memberId: string;
   bookingId: string;
+  sourceScheduleId?: string | null;
   status: ChatSessionStatus;
   currentIntent: ChatIntent | null;
   proposedScheduleId: string | null;
@@ -114,6 +115,7 @@ export interface GenAiAnalysis {
 export interface NewChatSession {
   memberId: string;
   bookingId: string;
+  sourceScheduleId?: string | null;
   status?: ChatSessionStatus;
   currentIntent: ChatIntent | null;
   proposedScheduleId?: string | null;

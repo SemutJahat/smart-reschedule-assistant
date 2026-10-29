@@ -307,6 +307,7 @@ export const chatSessions = pgTable(
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "restrict" }),
+    sourceScheduleId: uuid("source_schedule_id").references(() => schedules.id, { onDelete: "restrict" }),
     status: chatSessionStatus("status").notNull().default("active"),
     currentIntent: chatIntent("current_intent"),
     proposedScheduleId: uuid("proposed_schedule_id").references(() => schedules.id, { onDelete: "set null" }),

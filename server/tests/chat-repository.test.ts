@@ -7,7 +7,7 @@ import { InMemoryCatalogRepository } from "../src/modules/coaches/schema";
 import { InMemoryPaymentRepository } from "../src/modules/payments/repository";
 import { InMemoryRescheduleRepository } from "../src/modules/reschedules/repository";
 
-const session = { memberId: "member", bookingId: "booking", currentIntent: null as null };
+const session = { memberId: "member", bookingId: "booking", sourceScheduleId: "source", currentIntent: null as null };
 
 test("chat repository allocates sequences and finds client messages", async () => {
   const repository = new InMemoryChatRepository();

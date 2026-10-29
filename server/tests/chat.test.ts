@@ -48,7 +48,7 @@ class FakeChatRepository implements ChatRepository {
   async findActiveSession(bookingId: string) { return this.sessions.find((item) => item.bookingId === bookingId && (item.status === "active" || item.status === "awaiting_confirmation")) ?? null; }
   async insertSession(input: NewChatSession) {
     const now = new Date();
-    const item: ChatSessionRecord = { id: crypto.randomUUID(), memberId: input.memberId, bookingId: input.bookingId, status: input.status ?? "active", currentIntent: input.currentIntent, proposedScheduleId: input.proposedScheduleId ?? null, confirmedAt: input.confirmedAt ?? null, createdAt: now, updatedAt: now };
+    const item: ChatSessionRecord = { id: crypto.randomUUID(), memberId: input.memberId, bookingId: input.bookingId, sourceScheduleId: input.sourceScheduleId ?? null, status: input.status ?? "active", currentIntent: input.currentIntent, proposedScheduleId: input.proposedScheduleId ?? null, confirmedAt: input.confirmedAt ?? null, createdAt: now, updatedAt: now };
     this.sessions.push(item);
     return item;
   }
