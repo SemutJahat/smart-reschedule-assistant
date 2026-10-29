@@ -7,6 +7,7 @@ export type ErrorCode =
   | "VALIDATION_ERROR"
   | "AI_SERVICE_UNAVAILABLE"
   | "AI_INVALID_RESPONSE"
+  | "CONFIRMATION_MISMATCH"
   | "INTERNAL_SERVER_ERROR";
 
 export interface ErrorDetails {

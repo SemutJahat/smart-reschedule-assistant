@@ -1,5 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { AppError } from "../src/shared/errors";
+import { ChatService, type ChatServiceContractDependencies } from "../src/modules/chat/service";
+import type { GenAiClient } from "../src/modules/chat/client";
 import type {
   ChatRepository,
   ChatMessageAnalysisRecord,
@@ -74,7 +76,7 @@ class FakeChatRepository implements ChatRepository {
   async findAnalysisByMessageId(messageId: string) { return this.analyses.find((item) => item.messageId === messageId) ?? null; }
 }
 
-class FakeAiClient {
+class FakeAiClient implements GenAiClient {
   result: GenAiAnalysis = {
     intent: "Reschedule",
     confidence: 0.99,
@@ -136,19 +138,24 @@ const serviceId = "00000000-0000-4000-8000-000000000007";
 const invalidScheduleId = "00000000-0000-4000-8000-000000000008";
 const SAFE_FALLBACK_REPLY = "I couldn't process that request right now. Please try again.";
 
-async function makeService(chat: FakeChatRepository, ai: FakeAiClient, overrides: Record<string, unknown> = {}) {
-  // The concrete dependency object is deliberately opaque to this contract
-  // suite so later repository/coordinator tasks can choose their adapters.
-  // Once ChatService exists, replace this dynamic import and `as never` with
-  // its typed constructor/dependency interface.
-  const serviceModule: string = "../src/modules/chat/service";
-  const { ChatService } = await import(serviceModule);
-  return new ChatService({ chat, ai, ...overrides } as never);
+function makeService(chat: FakeChatRepository, ai: FakeAiClient, coordinator: FakeSharedTransactionCoordinator, reschedule: FakeRescheduleRepository) {
+  const dependencies: ChatServiceContractDependencies = {
+    chat,
+    ai,
+    coordinator,
+    reschedule,
+    member: { id: memberId, userId: user.userId, status: "active" },
+    eligibility: { subscriptionStatus: "active", subscriptionExpiresAt: new Date("2030-01-01T00:00:00.000Z"), remainingQuota: 3 },
+    booking,
+    sourceSchedule: { id: sourceScheduleId, serviceId },
+    candidates: [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }],
+  };
+  return new ChatService(dependencies);
 }
 
 let chat: FakeChatRepository;
 let ai: FakeAiClient;
-let service: any;
+let service: ChatService;
 let reschedule: FakeRescheduleRepository;
 let coordinator: FakeSharedTransactionCoordinator;
 let booking: { id: string; memberId: string; scheduleId: string; status: "booked" };
@@ -159,15 +166,7 @@ beforeEach(async () => {
   reschedule = new FakeRescheduleRepository();
   coordinator = new FakeSharedTransactionCoordinator(chat, reschedule);
   booking = { id: bookingId, memberId, scheduleId: sourceScheduleId, status: "booked" };
-  service = await makeService(chat, ai, {
-    coordinator,
-    reschedule,
-    member: { id: memberId, userId: user.userId, status: "active" },
-    eligibility: { subscriptionStatus: "active", subscriptionExpiresAt: new Date("2030-01-01T00:00:00.000Z"), remainingQuota: 3 },
-    booking,
-    sourceSchedule: { id: sourceScheduleId, serviceId },
-    candidates: [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }],
-  });
+  service = makeService(chat, ai, coordinator, reschedule);
 });
 
 test("a valid Reschedule proposal moves the session to awaiting_confirmation", async () => {
