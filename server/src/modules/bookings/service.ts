@@ -16,6 +16,32 @@ function validateDate(value: string | undefined) {
   if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new AppError("BAD_REQUEST", "date must use YYYY-MM-DD", 400);
 }
 
+type DatabaseErrorShape = {
+  code?: unknown;
+  constraint?: unknown;
+  constraint_name?: unknown;
+  cause?: {
+    code?: unknown;
+    constraint?: unknown;
+    constraint_name?: unknown;
+  };
+};
+
+export function bookingDuplicateConflict(error: unknown): AppError | null {
+  if (!error || typeof error !== "object") return null;
+  const databaseError = error as DatabaseErrorShape;
+  const nested = databaseError.cause;
+  const code = databaseError.code ?? nested?.code;
+  const constraint = databaseError.constraint
+    ?? databaseError.constraint_name
+    ?? nested?.constraint
+    ?? nested?.constraint_name;
+  if (code === "23505" && constraint === "bookings_member_schedule_active_uidx") {
+    return new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
+  }
+  return null;
+}
+
 export class BookingService {
   constructor(readonly repository: BookingRepository, readonly authRepository: AuthRepository) {}
 
@@ -45,12 +71,8 @@ export class BookingService {
       return serialize(created);
       });
     } catch (error) {
-      const databaseError = error as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
-      const code = databaseError.code ?? databaseError.cause?.code;
-      const constraint = databaseError.constraint ?? databaseError.cause?.constraint;
-      if (code === "23505" && constraint === "bookings_member_schedule_active_uidx") {
-        throw new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
-      }
+      const duplicateConflict = bookingDuplicateConflict(error);
+      if (duplicateConflict) throw duplicateConflict;
       throw error;
     }
   }

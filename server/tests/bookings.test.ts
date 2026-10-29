@@ -3,6 +3,7 @@ import { InMemoryAuthRepository } from "../src/modules/auth/repository";
 import { InMemoryCatalogRepository } from "../src/modules/coaches/schema";
 import { InMemoryPaymentRepository } from "../src/modules/payments/repository";
 import { InMemoryBookingRepository } from "../src/modules/bookings/repository";
+import { bookingDuplicateConflict } from "../src/modules/bookings/service";
 import { createTestApp } from "./helpers/app";
 
 const json = (value: unknown, token?: string) => ({ headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(value) });
@@ -24,6 +25,12 @@ let otherSubscriptionId: string;
 
 async function login(email: string) { return credentials(await app.handle(new Request("http://localhost/auth/login", { method: "POST", ...json({ email, password: "password-123" }) }))); }
 function dates(offsetDays = 1) { const startsAt = new Date(Date.now() + offsetDays * 86_400_000); startsAt.setUTCHours(12, 0, 0, 0); return { startsAt, endsAt: new Date(startsAt.getTime() + 60 * 60 * 1000) }; }
+
+test("maps PostgreSQL active-booking duplicate errors with constraint_name to conflict", () => {
+  const conflict = bookingDuplicateConflict({ code: "23505", constraint_name: "bookings_member_schedule_active_uidx" });
+  expect(conflict?.code).toBe("CONFLICT");
+  expect(conflict?.status).toBe(409);
+});
 
 beforeEach(async () => {
   auth = new InMemoryAuthRepository(); catalog = new InMemoryCatalogRepository(); payments = new InMemoryPaymentRepository(catalog); app = createTestApp({}, auth, catalog, payments);
