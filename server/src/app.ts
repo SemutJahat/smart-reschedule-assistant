@@ -21,6 +21,10 @@ import { PackageService } from "./modules/packages/service";
 import { packageRoutes } from "./modules/packages/routes";
 import { ScheduleService } from "./modules/schedules/service";
 import { scheduleRoutes } from "./modules/schedules/routes";
+import { createPaymentRepository, InMemoryPaymentRepository } from "./modules/payments/repository";
+import type { PaymentRepository } from "./modules/payments/schema";
+import { PaymentService } from "./modules/payments/service";
+import { paymentRoutes } from "./modules/payments/routes";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
@@ -29,6 +33,7 @@ const healthResponse = t.Object({
 export interface AppOptions {
   repository?: AuthRepository;
   catalogRepository?: CatalogRepository;
+  paymentRepository?: PaymentRepository;
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
@@ -37,10 +42,11 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   }
   const jwtSecret = config.jwtSecret;
   const refreshSecret = config.jwtRefreshSecret;
-  const db = options.repository ? null : config.databaseUrl ? createDb(config.databaseUrl) : getDefaultDb();
+  const db = config.nodeEnv === "test" || options.repository ? null : config.databaseUrl ? createDb(config.databaseUrl) : getDefaultDb();
   if (config.nodeEnv === "production" && !db) throw new Error("DATABASE_URL is required in production");
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   const catalogRepository = options.catalogRepository ?? (db ? createCatalogRepository(db.db) : new InMemoryCatalogRepository());
+  const paymentRepository = options.paymentRepository ?? (db ? createPaymentRepository(db.db) : new InMemoryPaymentRepository(catalogRepository));
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -78,5 +84,6 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const withCoaches = coachRoutes(configured, new CoachService(catalogRepository, repository), repository);
   const withPackages = packageRoutes(withCoaches, new PackageService(catalogRepository, repository), repository);
   const catalog = scheduleRoutes(withPackages, new ScheduleService(catalogRepository, repository), repository);
-  return authRoutes(userRoutes(memberRoutes(catalog, new MemberService(repository)), new UserService(repository)), auth);
+  const withPayments = paymentRoutes(catalog, new PaymentService(paymentRepository, repository), repository);
+  return authRoutes(userRoutes(memberRoutes(withPayments, new MemberService(repository)), new UserService(repository)), auth);
 }
