@@ -2,6 +2,8 @@ import { beforeEach, expect, test } from "bun:test";
 import { InMemoryAuthRepository } from "../src/modules/auth/repository";
 import { InMemoryCatalogRepository } from "../src/modules/coaches/schema";
 import { createTestApp } from "./helpers/app";
+import { ScheduleService } from "../src/modules/schedules/service";
+import type { CatalogRepository } from "../src/modules/coaches/schema";
 
 const json = (value: unknown, token?: string) => ({ headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(value) });
 const credentials = (response: Response) => response.json() as Promise<{ accessToken: string }>;
@@ -40,6 +42,22 @@ test("customers can read catalog but cannot write", async () => {
   expect((await app.handle(new Request("http://localhost/packages"))).status).toBe(401);
   expect((await app.handle(new Request("http://localhost/schedules", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
   expect((await app.handle(new Request("http://localhost/schedules", { method: "POST", ...json({ title: "Nope", coachId: crypto.randomUUID(), serviceId: crypto.randomUUID(), startsAt: "2030-01-01T10:00:00.000Z", endsAt: "2030-01-01T11:00:00.000Z", capacity: 1 }, customer.accessToken) }))).status).toBe(403);
+});
+
+test("schedule capacity trigger conflicts map to HTTP conflicts", async () => {
+  const schedule = { id: crypto.randomUUID(), title: "Capacity", coachId: crypto.randomUUID(), serviceId: crypto.randomUUID(), startsAt: new Date("2030-01-01T10:00:00.000Z"), endsAt: new Date("2030-01-01T11:00:00.000Z"), capacity: 2, status: "available" as const, createdAt: new Date(), updatedAt: new Date() };
+  const repository = {
+    transaction: async (fn: (tx: CatalogRepository) => Promise<unknown>) => fn(repository as CatalogRepository),
+    findSchedule: async () => schedule,
+    findCoach: async () => ({ id: schedule.coachId, name: "Coach", phone: null, specialty: null, bio: null, status: "active" as const, serviceIds: [schedule.serviceId], createdAt: new Date(), updatedAt: new Date() }),
+    listServicesByIds: async () => [{ id: schedule.serviceId, name: "Service", description: null, active: true, createdAt: new Date(), updatedAt: new Date() }],
+    listServicesForCoach: async () => [],
+    listSchedules: async () => [schedule],
+    countBooked: async () => 1,
+    updateSchedule: async () => { throw { code: "P0006", message: "BOOKING_CAPACITY_REDUCTION: schedule has booked rows" }; },
+  } as unknown as CatalogRepository;
+  const service = new ScheduleService(repository, {} as never);
+  await expect(service.update(schedule.id, { capacity: 2 })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 });
 
 test("admin can create coaches and packages, with service validation and package filters", async () => {

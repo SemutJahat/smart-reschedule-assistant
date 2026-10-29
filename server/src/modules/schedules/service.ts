@@ -1,6 +1,7 @@
 import { AppError } from "../../shared/errors";
 import type { AuthRepository } from "../auth/schema";
 import type { CatalogRepository, ScheduleRecord } from "../coaches/schema";
+import { mapBookingInvariantError } from "../bookings/errors";
 
 export interface ScheduleInput { title: string; coachId: string; serviceId: string; startsAt: string; endsAt: string; capacity: number; status?: ScheduleRecord["status"]; }
 export interface SchedulePatch { title?: string; coachId?: string; serviceId?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: ScheduleRecord["status"]; }
@@ -31,7 +32,8 @@ export class ScheduleService {
     });
   }
   async update(id: string, input: SchedulePatch) {
-    return this.repository.transaction(async (tx) => {
+    try {
+      return await this.repository.transaction(async (tx) => {
       const current = await tx.findSchedule(id); if (!current) throw new AppError("NOT_FOUND", "Schedule not found", 404);
       const values = { title: input.title === undefined ? current.title : title(input.title), coachId: input.coachId ?? current.coachId, serviceId: input.serviceId ?? current.serviceId, startsAt: input.startsAt === undefined ? current.startsAt : date(input.startsAt, "startsAt"), endsAt: input.endsAt === undefined ? current.endsAt : date(input.endsAt, "endsAt"), capacity: input.capacity ?? current.capacity };
       if (values.endsAt.getTime() <= values.startsAt.getTime()) throw new AppError("BAD_REQUEST", "endsAt must be after startsAt", 400);
@@ -42,8 +44,13 @@ export class ScheduleService {
       const cancelled = (input.status ?? current.status) === "cancelled";
       if (!cancelled) await assertNoOverlap(tx, values.startsAt, values.endsAt, values.coachId, id);
       await tx.updateSchedule(id, { ...values, status: cancelled ? "cancelled" : booked >= values.capacity ? "full" : "available" });
-      return serializeSchedule(await this.withDerivedStatus((await tx.findSchedule(id))!, tx));
-    });
+        return serializeSchedule(await this.withDerivedStatus((await tx.findSchedule(id))!, tx));
+      });
+    } catch (error) {
+      const conflict = mapBookingInvariantError(error);
+      if (conflict) throw conflict;
+      throw error;
+    }
   }
   private async withDerivedStatus(item: ScheduleRecord, repository = this.repository) { const booked = await repository.countBooked(item.id); const status: ScheduleRecord["status"] = item.status === "cancelled" ? "cancelled" : booked >= item.capacity ? "full" : "available"; return { ...item, bookedCount: booked, status }; }
 }
