@@ -14,8 +14,7 @@ import type {
 
 type DbExecutor = any;
 
-type RescheduleRequestRow = typeof rescheduleRequests.$inferSelect & { chatSessionId?: string | null };
-const requestRecord = (row: RescheduleRequestRow): RescheduleRequestRecord => ({ ...row, chatSessionId: row.chatSessionId ?? null });
+const requestRecord = (row: typeof rescheduleRequests.$inferSelect): RescheduleRequestRecord => row;
 const bookingRecord = (row: typeof bookings.$inferSelect): BookingRecord => row;
 
 export class DrizzleRescheduleRepository implements RescheduleRepository {
@@ -45,9 +44,8 @@ export class DrizzleRescheduleRepository implements RescheduleRepository {
   }
 
   async insertRequest(input: RescheduleRequestInput) {
-    // The nullable chat link is added by the Task 2 migration; keep legacy DB writes unchanged for now.
-    const legacyInput = "chatSessionId" in input ? (({ chatSessionId: _chatSessionId, ...rest }) => rest)(input) : input;
-    const rows = await this.db.insert(rescheduleRequests).values({ ...legacyInput, customerMessage: input.customerMessage }).returning();
+    const chatSessionId = "chatSessionId" in input ? input.chatSessionId : null;
+    const rows = await this.db.insert(rescheduleRequests).values({ ...input, chatSessionId, customerMessage: input.customerMessage }).returning();
     return requestRecord(rows[0]);
   }
 
