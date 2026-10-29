@@ -10,6 +10,9 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Maximum reply size accepted from the provider and exposed through the API. */
+export const MAX_GEN_AI_REPLY_LENGTH = 2_000;
+
 export interface GenAiClient {
   analyze(context: ChatContext): Promise<GenAiAnalysis>;
 }
@@ -21,7 +24,7 @@ const GenAiAnalysisSchema = Type.Object({
   // Keep UUID validation local to this schema. Value.Check does not inherit
   // Elysia's format registry when used as a framework-independent validator.
   recommendedScheduleIds: Type.Array(Type.RegExp(UUID_PATTERN)),
-  reply: Type.String({ minLength: 1 }),
+  reply: Type.String({ minLength: 1, maxLength: MAX_GEN_AI_REPLY_LENGTH }),
   nextState: Type.Union([
     Type.Literal("active"),
     Type.Literal("awaiting_confirmation"),

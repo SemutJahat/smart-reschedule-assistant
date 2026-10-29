@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { loadConfig } from "../src/config/env";
 import {
   HttpGenAiClient,
+  MAX_GEN_AI_REPLY_LENGTH,
   StubGenAiClient,
 } from "../src/modules/chat/client";
 import type { ChatContext } from "../src/modules/chat/schema";
@@ -114,4 +115,28 @@ test("HTTP client rejects non-OK, non-JSON, and malformed responses without prov
     expect(error.message).not.toContain("provider");
     expect(error.message).not.toContain("provider-key");
   }
+});
+
+test("HTTP client rejects an oversized provider reply", async () => {
+  const client = new HttpGenAiClient({
+    baseUrl: "https://ai.example",
+    apiKey: "provider-key",
+    model: "m",
+    timeoutMs: 25,
+    fetchImpl: async () => new Response(JSON.stringify({
+      intent: "Other",
+      confidence: 0.5,
+      extracted: {},
+      recommendedScheduleIds: [],
+      reply: "r".repeat(MAX_GEN_AI_REPLY_LENGTH + 1),
+      nextState: "active",
+      model: "m",
+      modelVersion: "v1",
+    }), { status: 200 }),
+  });
+
+  await expect(client.analyze(context())).rejects.toMatchObject({
+    code: "AI_INVALID_RESPONSE",
+    status: 502,
+  });
 });
