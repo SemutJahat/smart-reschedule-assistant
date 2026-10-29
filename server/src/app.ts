@@ -3,7 +3,7 @@ import { Elysia, t } from "elysia";
 import { loadConfig, type AppConfig } from "./config/env";
 import { errors } from "./plugins/errors";
 import { authPlugin } from "./plugins/auth";
-import { createDb, getDefaultDb } from "./db/client";
+import type { DatabaseConnection } from "./db/client";
 import { createAuthRepository, InMemoryAuthRepository } from "./modules/auth/repository";
 import { AuthService } from "./modules/auth/service";
 import { ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL } from "./modules/auth/service";
@@ -39,6 +39,8 @@ const healthResponse = t.Object({
 });
 
 export interface AppOptions {
+  /** The connection is created and owned by the process entry point. */
+  database?: DatabaseConnection | null;
   repository?: AuthRepository;
   catalogRepository?: CatalogRepository;
   paymentRepository?: PaymentRepository;
@@ -50,10 +52,15 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   if (config.nodeEnv === "production" && !config.databaseUrl) {
     throw new Error("DATABASE_URL is required in production");
   }
+  const db = options.database ?? null;
+  if (config.nodeEnv === "production" && !db) {
+    throw new Error("An explicit database connection is required in production");
+  }
+  if (config.nodeEnv !== "test" && config.databaseUrl && !db) {
+    throw new Error("An explicit database connection is required when DATABASE_URL is configured");
+  }
   const jwtSecret = config.jwtSecret;
   const refreshSecret = config.jwtRefreshSecret;
-  const db = config.nodeEnv === "test" || options.repository ? null : config.databaseUrl ? createDb(config.databaseUrl) : getDefaultDb();
-  if (config.nodeEnv === "production" && !db) throw new Error("DATABASE_URL is required in production");
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   const catalogRepository = options.catalogRepository ?? (db ? createCatalogRepository(db.db) : new InMemoryCatalogRepository());
   const paymentRepository = options.paymentRepository ?? (db ? createPaymentRepository(db.db) : new InMemoryPaymentRepository(catalogRepository));
