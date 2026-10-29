@@ -25,6 +25,10 @@ import { createPaymentRepository, InMemoryPaymentRepository } from "./modules/pa
 import type { PaymentRepository } from "./modules/payments/schema";
 import { PaymentService } from "./modules/payments/service";
 import { paymentRoutes } from "./modules/payments/routes";
+import { createBookingRepository, InMemoryBookingRepository } from "./modules/bookings/repository";
+import type { BookingRepository } from "./modules/bookings/schema";
+import { BookingService } from "./modules/bookings/service";
+import { bookingRoutes } from "./modules/bookings/routes";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
@@ -34,6 +38,7 @@ export interface AppOptions {
   repository?: AuthRepository;
   catalogRepository?: CatalogRepository;
   paymentRepository?: PaymentRepository;
+  bookingRepository?: BookingRepository;
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
@@ -47,6 +52,7 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   const catalogRepository = options.catalogRepository ?? (db ? createCatalogRepository(db.db) : new InMemoryCatalogRepository());
   const paymentRepository = options.paymentRepository ?? (db ? createPaymentRepository(db.db) : new InMemoryPaymentRepository(catalogRepository));
+  const bookingRepository = options.bookingRepository ?? (db ? createBookingRepository(db.db) : new InMemoryBookingRepository(catalogRepository, paymentRepository));
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -85,5 +91,6 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const withPackages = packageRoutes(withCoaches, new PackageService(catalogRepository, repository), repository);
   const catalog = scheduleRoutes(withPackages, new ScheduleService(catalogRepository, repository), repository);
   const withPayments = paymentRoutes(catalog, new PaymentService(paymentRepository, repository), repository);
-  return authRoutes(userRoutes(memberRoutes(withPayments, new MemberService(repository)), new UserService(repository)), auth);
+  const withBookings = bookingRoutes(withPayments, new BookingService(bookingRepository, repository), repository);
+  return authRoutes(userRoutes(memberRoutes(withBookings, new MemberService(repository)), new UserService(repository)), auth);
 }

@@ -5,8 +5,9 @@ import { InMemoryAuthRepository } from "../../src/modules/auth/repository";
 import type { CatalogRepository } from "../../src/modules/coaches/schema";
 import type { PaymentRepository } from "../../src/modules/payments/schema";
 import { InMemoryPaymentRepository } from "../../src/modules/payments/repository";
+import type { BookingRepository } from "../../src/modules/bookings/schema";
 
-export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository, catalogRepository?: CatalogRepository, paymentRepository?: PaymentRepository) {
+export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository, catalogRepository?: CatalogRepository, paymentRepository?: PaymentRepository, bookingRepository?: BookingRepository) {
   const catalog = catalogRepository;
   return createApp({
     nodeEnv: "test",
@@ -15,5 +16,5 @@ export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: A
     jwtSecret: "test-jwt-secret",
     jwtRefreshSecret: "test-refresh-secret",
     ...overrides,
-  }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository: catalog, paymentRepository: paymentRepository ?? (catalog ? new InMemoryPaymentRepository(catalog) : undefined) });
+  }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository: catalog, paymentRepository: paymentRepository ?? (catalog ? new InMemoryPaymentRepository(catalog) : undefined), bookingRepository });
 }

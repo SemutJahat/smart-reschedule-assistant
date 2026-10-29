@@ -57,6 +57,21 @@ export class DrizzlePaymentRepository implements PaymentRepository {
     return subscriptionRecord(rows[0]);
   }
 
+  async findSubscription(id: string, lock = false) {
+    const query = this.db.select().from(subscriptions).where(eq(subscriptions.id, id)).limit(1);
+    const rows = lock && this.inTransaction ? await query.for("update") : await query;
+    return rows[0] ? subscriptionRecord(rows[0]) : null;
+  }
+
+  async updateSubscription(id: string, patch: { usedSessions?: number }) {
+    const rows = await this.db.update(subscriptions).set({ ...patch, updatedAt: new Date() }).where(eq(subscriptions.id, id)).returning();
+    return rows[0] ? subscriptionRecord(rows[0]) : null;
+  }
+
+  async listSubscriptions() {
+    return (await this.db.select().from(subscriptions)).map(subscriptionRecord);
+  }
+
   async listSubscriptionsByMember(memberId: string) {
     return (await this.db.select().from(subscriptions).where(eq(subscriptions.memberId, memberId))).map(subscriptionRecord);
   }
@@ -103,5 +118,8 @@ export class InMemoryPaymentRepository implements PaymentRepository {
   async updatePayment(id: string, patch: PaymentPatch) { const item = this.payments.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return { ...item }; }
   async findPackage(id: string) { return this.catalog.findPackage(id); }
   async insertSubscription(input: NewSubscription) { const now = new Date(); const item: SubscriptionRecord = { ...input, id: createId(), createdAt: now, updatedAt: now }; this.subscriptions.push(item); return { ...item }; }
+  async findSubscription(id: string) { const item = this.subscriptions.find((value) => value.id === id); return item ? { ...item } : null; }
+  async updateSubscription(id: string, patch: { usedSessions?: number }) { const item = this.subscriptions.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return { ...item }; }
+  async listSubscriptions() { return this.subscriptions.map((item) => ({ ...item })); }
   async listSubscriptionsByMember(memberId: string) { return this.subscriptions.filter((item) => item.memberId === memberId).map((item) => ({ ...item })); }
 }

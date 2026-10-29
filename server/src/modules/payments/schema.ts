@@ -69,5 +69,8 @@ export interface PaymentRepository {
   updatePayment(id: string, patch: PaymentPatch): Promise<PaymentRecord | null>;
   findPackage(id: string): Promise<PackageRecord | null>;
   insertSubscription(input: NewSubscription): Promise<SubscriptionRecord>;
+  findSubscription(id: string, lock?: boolean): Promise<SubscriptionRecord | null>;
+  updateSubscription(id: string, patch: { usedSessions?: number }): Promise<SubscriptionRecord | null>;
+  listSubscriptions(): Promise<SubscriptionRecord[]>;
   listSubscriptionsByMember(memberId: string): Promise<SubscriptionRecord[]>;
 }
