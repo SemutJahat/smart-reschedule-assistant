@@ -58,13 +58,20 @@ test("the in-memory coordinator rolls back all shared state atomically", async (
   const booking = new InMemoryBookingRepository(catalog, payment);
   const reschedule = new InMemoryRescheduleRepository(booking, catalog);
   const chat = new InMemoryChatRepository();
+  const schedule = await catalog.insertSchedule({ title: "Source", coachId: "coach", serviceId: "service", startsAt: new Date("2030-01-01T10:00:00Z"), endsAt: new Date("2030-01-01T11:00:00Z"), capacity: 1, status: "available" });
+  const originalSchedule = await catalog.findSchedule(schedule.id);
   const coordinator = new InMemoryChatTransactionCoordinator({ chat, reschedule, booking, payment, catalog });
   await expect(coordinator.transaction(async (tx) => {
     const created = await tx.chat.insertSession(session);
-    await tx.booking.insertBooking({ memberId: session.memberId, scheduleId: "source", subscriptionId: "subscription" });
+    const createdBooking = await tx.booking.insertBooking({ memberId: session.memberId, scheduleId: schedule.id, subscriptionId: "subscription" });
+    await tx.booking.updateBooking(createdBooking.id, { scheduleId: "other-schedule" });
+    await tx.booking.updateScheduleStatus(schedule.id, "full");
+    await tx.payment.insertPayment({ memberId: session.memberId, packageId: "package", amount: "1" });
     await tx.payment.insertSubscription({ memberId: session.memberId, packageId: "package", status: "active", startsAt: new Date(), expiresAt: new Date(), totalSessions: 1, usedSessions: 0, amountPaid: "1" });
     await tx.reschedule.insertRequest({ bookingId: "booking", memberId: session.memberId, chatSessionId: created.id, fromScheduleId: "source", toScheduleId: "target", customerMessage: "move" });
     throw new Error("atomic rollback");
   })).rejects.toThrow("atomic rollback");
   expect(chat.sessions).toHaveLength(0); expect(reschedule.requests).toHaveLength(0); expect(booking.bookings).toHaveLength(0); expect(payment.subscriptions).toHaveLength(0); expect(catalog.bookings).toHaveLength(0);
+  expect(payment.payments).toHaveLength(0);
+  expect(await catalog.findSchedule(schedule.id)).toEqual(originalSchedule);
 });
