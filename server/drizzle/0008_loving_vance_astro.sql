@@ -52,7 +52,6 @@ CREATE UNIQUE INDEX "chat_message_analyses_message_uidx" ON "chat_message_analys
 CREATE INDEX "chat_message_analyses_status_idx" ON "chat_message_analyses" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "chat_messages_session_sequence_uidx" ON "chat_messages" USING btree ("session_id","sequence");--> statement-breakpoint
 CREATE UNIQUE INDEX "chat_messages_session_client_message_uidx" ON "chat_messages" USING btree ("session_id","client_message_id") WHERE "chat_messages"."client_message_id" is not null;--> statement-breakpoint
-CREATE INDEX "chat_messages_session_sequence_idx" ON "chat_messages" USING btree ("session_id","sequence");--> statement-breakpoint
 CREATE INDEX "chat_sessions_member_idx" ON "chat_sessions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "chat_sessions_booking_idx" ON "chat_sessions" USING btree ("booking_id");--> statement-breakpoint
 CREATE INDEX "chat_sessions_status_idx" ON "chat_sessions" USING btree ("status");--> statement-breakpoint

@@ -341,7 +341,6 @@ export const chatMessages = pgTable(
     uniqueIndex("chat_messages_session_client_message_uidx")
       .on(table.sessionId, table.clientMessageId)
       .where(sql`${table.clientMessageId} is not null`),
-    index("chat_messages_session_sequence_idx").on(table.sessionId, table.sequence),
   ],
 );
 

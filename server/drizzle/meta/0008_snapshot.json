@@ -1,5 +1,5 @@
 {
-  "id": "578f425b-b514-4e03-bd83-353ba6ee96e8",
+  "id": "1bf45a3a-38cb-4913-ba13-6cf66ab80b33",
   "prevId": "c68eb3dc-e6c2-44a7-8f1c-c5b3b96cc0e1",
   "version": "7",
   "dialect": "postgresql",
@@ -455,27 +455,6 @@
           ],
           "isUnique": true,
           "where": "\"chat_messages\".\"client_message_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "chat_messages_session_sequence_idx": {
-          "name": "chat_messages_session_sequence_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sequence",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
