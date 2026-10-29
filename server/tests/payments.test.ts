@@ -46,6 +46,27 @@ test("customer creates and reads only their pending payment, with sanitized inpu
   expect((await app.handle(new Request("http://localhost/payments", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(403);
 });
 
+test("customers cannot read another customer's payment for the same package", async () => {
+  const admin = await login("admin@example.com");
+  const customerA = await login("customer@example.com");
+  const customerB = await login("other@example.com");
+  const packageItem = await createPackage(admin.accessToken);
+  const paymentAResponse = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, reference: "customer-a-reference" }, customerA.accessToken) }));
+  const paymentBResponse = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, reference: "customer-b-reference" }, customerB.accessToken) }));
+  expect(paymentAResponse.status).toBe(200);
+  expect(paymentBResponse.status).toBe(200);
+  const paymentA = await paymentAResponse.json() as { id: string; reference: string };
+  const paymentB = await paymentBResponse.json() as { id: string; reference: string };
+
+  const ownPayments = await app.handle(new Request("http://localhost/payments/me", { headers: { authorization: `Bearer ${customerA.accessToken}` } }));
+  expect(ownPayments.status).toBe(200);
+  const body = await ownPayments.json() as Array<{ id: string; reference: string }>;
+  expect(body).toHaveLength(1);
+  expect(body[0]).toMatchObject({ id: paymentA.id, reference: paymentA.reference });
+  expect(body.some((payment) => payment.id === paymentB.id)).toBe(false);
+  expect(body.some((payment) => payment.reference === paymentB.reference)).toBe(false);
+});
+
 test("preserves trimmed payment fields and accepts the varchar reference limit", async () => {
   const admin = await login("admin@example.com");
   const customer = await login("customer@example.com");
