@@ -13,6 +13,14 @@ import { userRoutes } from "./modules/users/routes";
 import { MemberService } from "./modules/members/service";
 import { memberRoutes } from "./modules/members/routes";
 import type { AuthRepository } from "./modules/auth/schema";
+import { createCatalogRepository } from "./modules/coaches/service";
+import { InMemoryCatalogRepository, type CatalogRepository } from "./modules/coaches/schema";
+import { CoachService } from "./modules/coaches/service";
+import { coachRoutes } from "./modules/coaches/routes";
+import { PackageService } from "./modules/packages/service";
+import { packageRoutes } from "./modules/packages/routes";
+import { ScheduleService } from "./modules/schedules/service";
+import { scheduleRoutes } from "./modules/schedules/routes";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
@@ -20,6 +28,7 @@ const healthResponse = t.Object({
 
 export interface AppOptions {
   repository?: AuthRepository;
+  catalogRepository?: CatalogRepository;
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
@@ -31,6 +40,7 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const db = options.repository ? null : config.databaseUrl ? createDb(config.databaseUrl) : getDefaultDb();
   if (config.nodeEnv === "production" && !db) throw new Error("DATABASE_URL is required in production");
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
+  const catalogRepository = options.catalogRepository ?? (db ? createCatalogRepository(db.db) : new InMemoryCatalogRepository());
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -65,5 +75,8 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
       verifyRefreshToken = (token) => refreshJwt.verify(token) as Promise<{ userId?: string } | false>;
       return {};
     });
-  return authRoutes(userRoutes(memberRoutes(configured, new MemberService(repository)), new UserService(repository)), auth);
+  const withCoaches = coachRoutes(configured, new CoachService(catalogRepository, repository), repository);
+  const withPackages = packageRoutes(withCoaches, new PackageService(catalogRepository, repository), repository);
+  const catalog = scheduleRoutes(withPackages, new ScheduleService(catalogRepository, repository), repository);
+  return authRoutes(userRoutes(memberRoutes(catalog, new MemberService(repository)), new UserService(repository)), auth);
 }

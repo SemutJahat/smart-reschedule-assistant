@@ -2,8 +2,9 @@ import { createApp } from "../../src/app";
 import type { AppConfig } from "../../src/config/env";
 import type { AuthRepository } from "../../src/modules/auth/schema";
 import { InMemoryAuthRepository } from "../../src/modules/auth/repository";
+import type { CatalogRepository } from "../../src/modules/coaches/schema";
 
-export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository) {
+export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository, catalogRepository?: CatalogRepository) {
   return createApp({
     nodeEnv: "test",
     port: 3000,
@@ -11,5 +12,5 @@ export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: A
     jwtSecret: "test-jwt-secret",
     jwtRefreshSecret: "test-refresh-secret",
     ...overrides,
-  }, { repository: repository ?? new InMemoryAuthRepository() });
+  }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository });
 }
