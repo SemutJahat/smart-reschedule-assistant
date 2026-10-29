@@ -20,7 +20,12 @@ export function sanitizeUser(user: UserRecord) {
 }
 
 export function sanitizeMember(member: MemberRecord) {
-  return { ...member };
+  return {
+    ...member,
+    joinedAt: member.joinedAt.toISOString(),
+    createdAt: member.createdAt.toISOString(),
+    updatedAt: member.updatedAt.toISOString(),
+  };
 }
 
 export async function digestRefreshToken(token: string): Promise<string> {
@@ -28,8 +33,8 @@ export async function digestRefreshToken(token: string): Promise<string> {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function bad(message: string, status = 400): never {
-  throw new AppError("BAD_REQUEST", message, status);
+function bad(message: string, status = 400, code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" = "BAD_REQUEST"): never {
+  throw new AppError(code, message, status);
 }
 
 function validatePassword(password: string): void {
@@ -67,22 +72,24 @@ export class AuthService {
     this.issueAccessToken = issuer;
   }
 
-  async register(input: { email: string; password: string; name?: string }) {
+  async register(input: { email: string; password: string; name: string; phone?: string | null }) {
     validatePassword(input.password);
     const email = normalizeEmail(input.email);
-    if (!email || !email.includes("@")) bad("A valid email is required");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad("A valid email is required");
     return this.repository.transaction(async (tx) => {
       if (await tx.findUserByEmail(email)) bad("Email is already registered", 409);
       const passwordHash = await Bun.password.hash(input.password, { algorithm: "argon2id" });
-      const user = await tx.insertUser({ email, passwordHash, role: "customer", name: input.name?.trim() || email });
-      await tx.insertMember({ userId: user.id, memberNumber: `MEM-${user.id.slice(0, 8).toUpperCase()}` });
+      const name = input.name.trim();
+      if (!name) bad("Name is required");
+      const user = await tx.insertUser({ email, passwordHash, role: "customer", name });
+      await tx.insertMember({ userId: user.id, memberNumber: `MEM-${user.id.slice(0, 8).toUpperCase()}`, phone: input.phone?.trim() || null });
       return this.issueTokens(tx, user);
     });
   }
 
   async login(input: { email: string; password: string }) {
     const user = await this.repository.findUserByEmail(normalizeEmail(input.email));
-    if (!user || !(await Bun.password.verify(input.password, user.passwordHash))) bad("Invalid credentials", 401);
+    if (!user || !(await Bun.password.verify(input.password, user.passwordHash))) bad("Invalid credentials", 401, "UNAUTHORIZED");
     return this.issueTokens(this.repository, user);
   }
 
@@ -96,16 +103,17 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     const claims = this.verifyRefreshToken ? await this.verifyRefreshToken(refreshToken) : undefined;
-    if (claims === false) bad("Invalid refresh token", 401);
+    if (claims === false) bad("Invalid refresh token", 401, "UNAUTHORIZED");
     const digest = await digestRefreshToken(refreshToken);
     return this.repository.transaction(async (tx) => {
       const old = await tx.findRefreshToken(digest);
       const now = this.now();
-      if (!old || old.revokedAt || old.expiresAt.getTime() <= now.getTime()) bad("Invalid refresh token", 401);
+      if (!old || old.revokedAt || old.expiresAt.getTime() <= now.getTime()) bad("Invalid refresh token", 401, "UNAUTHORIZED");
       const user = await tx.findUserById(old.userId);
-      if (!user) bad("Invalid refresh token", 401);
-      if (claims?.userId && claims.userId !== user.id) bad("Invalid refresh token", 401);
-      await tx.revokeRefreshToken(old.id, now);
+      if (!user) bad("Invalid refresh token", 401, "UNAUTHORIZED");
+      if (claims?.userId && claims.userId !== user.id) bad("Invalid refresh token", 401, "UNAUTHORIZED");
+      const revoked = await tx.revokeRefreshToken(old.id, now);
+      if (!revoked) bad("Invalid refresh token", 401, "UNAUTHORIZED");
       return this.issueTokens(tx, user);
     });
   }

@@ -1,5 +1,7 @@
 export type ErrorCode =
   | "BAD_REQUEST"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
   | "INTERNAL_SERVER_ERROR";

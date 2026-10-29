@@ -11,16 +11,21 @@ import { UserService } from "./modules/users/service";
 import { userRoutes } from "./modules/users/routes";
 import { MemberService } from "./modules/members/service";
 import { memberRoutes } from "./modules/members/routes";
+import type { AuthRepository } from "./modules/auth/schema";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
 });
 
-export function createApp(config: AppConfig = loadConfig()) {
+export interface AppOptions {
+  repository?: AuthRepository;
+}
+
+export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
   const jwtSecret = config.jwtSecret;
   const refreshSecret = config.jwtRefreshSecret;
-  const db = getDefaultDb();
-  const repository = db ? createAuthRepository(db.db) : new InMemoryAuthRepository();
+  const db = options.repository ? null : getDefaultDb();
+  const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -50,8 +55,8 @@ export function createApp(config: AppConfig = loadConfig()) {
     );
   const configured = secured
     .derive(({ jwt, refreshJwt }) => {
-      signAccessToken = (user) => jwt.sign({ userId: user.userId, role: user.role, exp: "15m" });
-      signRefreshToken = (user) => refreshJwt.sign({ userId: user.userId, role: user.role, exp: "30d" });
+      signAccessToken = (user) => jwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: "15m" });
+      signRefreshToken = (user) => refreshJwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: "30d" });
       verifyRefreshToken = (token) => refreshJwt.verify(token) as Promise<{ userId?: string } | false>;
       return {};
     });

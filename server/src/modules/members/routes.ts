@@ -13,9 +13,10 @@ const memberPatch = t.Object({
 });
 
 export function memberRoutes(app: AnyElysia, service: MemberService) {
+  const memberResponse = t.Object({ id: t.String(), memberNumber: t.String(), userId: t.String(), phone: t.Union([t.String(), t.Null()]), emergencyContact: t.Union([t.String(), t.Null()]), weight: t.Union([t.String(), t.Null()]), height: t.Union([t.String(), t.Null()]), bloodType: t.Union([t.String(), t.Null()]), medicalHistory: t.Union([t.String(), t.Null()]), status: t.Union([t.Literal("active"), t.Literal("inactive"), t.Literal("suspended")]), joinedAt: t.String(), createdAt: t.String(), updatedAt: t.String() });
   return app
-    .get("/members/me", async (context: any) => service.getForUser(await requireAuth(context)), { response: t.Any() })
-    .get("/members", async (context: any) => service.list(await requireAuth(context)), { response: t.Any() })
-    .get("/members/:id", async (context: any) => service.getById(await requireAuth(context), context.params.id), { response: t.Any() })
-    .patch("/members/:id", async (context: any) => service.update(await requireAuth(context), context.params.id, context.body), { body: memberPatch, response: t.Any() });
+    .get("/members/me", async (context: any) => service.getForUser(await requireAuth(context)), { response: memberResponse })
+    .get("/members", async (context: any) => service.list(await requireAuth(context)), { response: t.Array(memberResponse) })
+    .get("/members/:id", async (context: any) => service.getById(await requireAuth(context), context.params.id), { response: memberResponse })
+    .patch("/members/:id", async (context: any) => service.update(await requireAuth(context), context.params.id, context.body), { body: memberPatch, response: memberResponse });
 }

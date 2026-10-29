@@ -25,7 +25,7 @@ export async function requireAuth(context: {
 }): Promise<AuthUser> {
   const payload = await context.jwt.verify(bearer(context.headers));
   if (!payload || typeof payload.userId !== "string" || (payload.role !== "admin" && payload.role !== "customer")) {
-    throw new AppError("BAD_REQUEST", "Authentication required", 401);
+    throw new AppError("UNAUTHORIZED", "Authentication required", 401);
   }
   return { userId: payload.userId, role: payload.role };
 }
@@ -35,6 +35,6 @@ export async function requireRole(
   role: UserRole,
 ): Promise<AuthUser> {
   const user = await requireAuth(context);
-  if (user.role !== role) throw new AppError("BAD_REQUEST", "Forbidden", 403);
+  if (user.role !== role) throw new AppError("FORBIDDEN", "Forbidden", 403);
   return user;
 }
