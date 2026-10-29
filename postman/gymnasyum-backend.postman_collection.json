@@ -207,7 +207,7 @@
           "name": "Register Admin Seed Email",
           "request": {
             "method": "POST",
-            "description": "Registration never creates admins; seeded admin email should produce HTTP 409 (or HTTP 200 customer on an unseeded database).",
+            "description": "Diagnostic seed prerequisite check only. Expected: HTTP 409 because admin@example.com must already be seeded. If HTTP 200 is returned, registration created a customer, which is intentionally never saved as an admin token; seed the admin account before running Login Admin.",
             "header": [
               {
                 "key": "Content-Type",
@@ -245,13 +245,11 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "  const body = pm.response.json();",
-                  "  pm.environment.set(\"accessToken\", body.accessToken);",
-                  "  pm.environment.set(\"refreshToken\", body.refreshToken);",
-                  "  pm.environment.set(\"adminAccessToken\", body.accessToken);",
-                  "  pm.environment.set(\"adminRefreshToken\", body.refreshToken);",
+                  "  pm.environment.unset(\"adminAccessToken\");",
+                  "  pm.environment.unset(\"adminRefreshToken\");",
+                  "  pm.test(\"fallback registration did not create an admin\", function () { pm.expect(body.user && body.user.role).to.eql(\"customer\"); });",
                   "}",
-                  "pm.test(\"response status is expected\", function () { pm.expect([200, 409]).to.include(pm.response.code); });",
-                  "if (pm.response.code === 200) pm.expect(pm.response.json().user.role).to.eql(\"customer\");"
+                  "pm.test(\"seeded admin prerequisite is available\", function () { pm.expect(pm.response.code, \"Admin seed is missing: registration returned a customer (HTTP 200); seed the admin account before Login Admin\").to.eql(409); });"
                 ]
               }
             }
@@ -261,7 +259,7 @@
           "name": "Login Admin",
           "request": {
             "method": "POST",
-            "description": "Seeded admin login. Expected: HTTP 200 with admin role; saves admin tokens.",
+            "description": "Seeded admin login. Expected: HTTP 200 with role \"admin\"; saves admin tokens only after the role assertion passes. Requires the seeded admin account.",
             "header": [
               {
                 "key": "Content-Type",
@@ -297,15 +295,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
-                  "pm.environment.set(\"accessToken\", body.accessToken);",
-                  "pm.environment.set(\"refreshToken\", body.refreshToken);",
-                  "pm.environment.set(\"adminAccessToken\", body.accessToken);",
-                  "pm.environment.set(\"adminRefreshToken\", body.refreshToken);",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (error) { body = {}; }",
+                  "const isAdmin = body.user && body.user.role === \"admin\";",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"admin role exists\", function () { pm.expect(body.user.role).to.not.be.undefined; });",
-                  "pm.test(\"access token exists\", function () { pm.expect(body.accessToken).to.not.be.undefined; });",
-                  "pm.test(\"refresh token exists\", function () { pm.expect(body.refreshToken).to.not.be.undefined; });"
+                  "pm.test(\"Login Admin returned the seeded admin role\", function () { pm.expect(isAdmin, \"Login Admin requires a seeded admin account; received role: \" + (body.user && body.user.role)).to.eql(true); });",
+                  "if (pm.response.code === 200 && isAdmin) {",
+                  "  pm.environment.set(\"accessToken\", body.accessToken);",
+                  "  pm.environment.set(\"refreshToken\", body.refreshToken);",
+                  "  pm.environment.set(\"adminAccessToken\", body.accessToken);",
+                  "  pm.environment.set(\"adminRefreshToken\", body.refreshToken);",
+                  "} else {",
+                  "  pm.environment.unset(\"accessToken\");",
+                  "  pm.environment.unset(\"refreshToken\");",
+                  "  pm.environment.unset(\"adminAccessToken\");",
+                  "  pm.environment.unset(\"adminRefreshToken\");",
+                  "}",
+                  "pm.test(\"access token exists for the admin account\", function () { pm.expect(isAdmin && body.accessToken, \"Admin token was not saved because the response user was not an admin\").to.be.ok; });",
+                  "pm.test(\"refresh token exists for the admin account\", function () { pm.expect(isAdmin && body.refreshToken, \"Admin refresh token was not saved because the response user was not an admin\").to.be.ok; });"
                 ]
               }
             }
@@ -401,6 +408,61 @@
                   "const body = pm.response.json();",
                   "pm.test(\"user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
                   "pm.test(\"role exists\", function () { pm.expect(body.role).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout Admin",
+          "request": {
+            "method": "POST",
+            "description": "Invalidate the seeded admin refresh token. Expected: HTTP 200 with success true; uses the admin bearer token and does not overwrite token variables.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"logout succeeded\", function () { pm.expect(body.success).to.eql(true); });"
                 ]
               }
             }
@@ -568,6 +630,63 @@
                   "const body = pm.response.json();",
                   "pm.test(\"user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
                   "pm.test(\"role exists\", function () { pm.expect(body.role).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update customer user",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the seeded customer user name. Expected: HTTP 200 with the updated user record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/00000000-0000-4000-8000-000000000002",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "00000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Customer Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"updated user name is returned\", function () { pm.expect(body.name).to.eql(\"Postman Customer Updated\"); });",
+                  "pm.test(\"updated user remains a customer\", function () { pm.expect(body.role).to.eql(\"customer\"); });"
                 ]
               }
             }
@@ -1030,6 +1149,63 @@
           ]
         },
         {
+          "name": "Admin update package",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the package created by the preceding request. Expected: HTTP 200 with the updated package record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/packages/{{packageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages",
+                "{{packageId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Five coached sessions, updated by Postman\",\n  \"price\": 80\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated package id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"packageId\")); });",
+                  "pm.test(\"updated package description is returned\", function () { pm.expect(body.description).to.eql(\"Five coached sessions, updated by Postman\"); });",
+                  "pm.test(\"updated package price exists\", function () { pm.expect(body.price).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Customer list active packages",
           "request": {
             "method": "GET",
@@ -1233,6 +1409,63 @@
                   "pm.environment.set(\"targetScheduleId\", body.id);",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "pm.test(\"target schedule id exists\", function () { pm.expect(body.id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update source schedule",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the source schedule created by the preceding request. Expected: HTTP 200 with the updated schedule record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/schedules/{{scheduleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules",
+                "{{scheduleId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Morning Yoga Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated schedule id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"scheduleId\")); });",
+                  "pm.test(\"updated schedule title is returned\", function () { pm.expect(body.title).to.eql(\"Postman Morning Yoga Updated\"); });",
+                  "pm.test(\"schedule booked count exists\", function () { pm.expect(body.bookedCount).to.not.be.undefined; });"
                 ]
               }
             }
@@ -1862,6 +2095,64 @@
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cancel booking",
+          "request": {
+            "method": "PATCH",
+            "description": "Customer cancels the booking after the reschedule flow completes. Expected: HTTP 200 with cancelled status. The endpoint has no request fields; an empty JSON object is sent explicitly.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"cancelled booking id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"bookingId\")); });",
+                  "pm.test(\"booking status is cancelled\", function () { pm.expect(body.status).to.eql(\"cancelled\"); });",
+                  "pm.test(\"cancelled timestamp exists\", function () { pm.expect(body.cancelledAt).to.not.be.null; });"
                 ]
               }
             }
