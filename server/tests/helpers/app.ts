@@ -7,8 +7,9 @@ import type { PaymentRepository } from "../../src/modules/payments/schema";
 import { InMemoryPaymentRepository } from "../../src/modules/payments/repository";
 import type { BookingRepository } from "../../src/modules/bookings/schema";
 import { InMemoryBookingRepository } from "../../src/modules/bookings/repository";
+import type { RescheduleRepository } from "../../src/modules/reschedules/schema";
 
-export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository, catalogRepository?: CatalogRepository, paymentRepository?: PaymentRepository, bookingRepository?: BookingRepository) {
+export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: AuthRepository, catalogRepository?: CatalogRepository, paymentRepository?: PaymentRepository, bookingRepository?: BookingRepository, rescheduleRepository?: RescheduleRepository) {
   const catalog = catalogRepository;
   const payments = paymentRepository ?? (catalog ? new InMemoryPaymentRepository(catalog) : undefined);
   const bookings = bookingRepository ?? (catalog && payments ? new InMemoryBookingRepository(catalog, payments, catalog.bookings) : undefined);
@@ -19,5 +20,5 @@ export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: A
     jwtSecret: "test-jwt-secret",
     jwtRefreshSecret: "test-refresh-secret",
     ...overrides,
-  }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository: catalog, paymentRepository: payments, bookingRepository: bookings });
+  }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository: catalog, paymentRepository: payments, bookingRepository: bookings, rescheduleRepository });
 }

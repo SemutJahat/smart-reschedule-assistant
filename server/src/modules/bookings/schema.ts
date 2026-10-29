@@ -28,6 +28,7 @@ export interface NewBooking {
 }
 
 export interface BookingPatch {
+  scheduleId?: string;
   status?: BookingStatus;
   cancelledAt?: Date | null;
 }
