@@ -3,6 +3,7 @@ import { AppError, errorEnvelope, type ErrorCode } from "../shared/errors";
 
 function statusToErrorCode(status: number): ErrorCode {
   if (status === 404) return "NOT_FOUND";
+  if (status === 409) return "CONFLICT";
   if (status >= 400 && status < 500) return "BAD_REQUEST";
   return "INTERNAL_SERVER_ERROR";
 }

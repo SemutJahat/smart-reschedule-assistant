@@ -40,6 +40,27 @@ test("invalid environment values fail fast", () => {
   expect(loadConfig({}).corsOrigin).toBe("http://localhost:5173");
 });
 
+test("production configuration requires database, strong JWT secrets, and explicit CORS", () => {
+  expect(() => loadConfig({ NODE_ENV: "production" })).toThrow();
+  expect(() => loadConfig({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgres://localhost/app",
+    CORS_ORIGIN: "https://example.com",
+    JWT_SECRET: "short",
+    JWT_REFRESH_SECRET: "also-short",
+  })).toThrow();
+
+  const valid = loadConfig({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgres://localhost/app",
+    CORS_ORIGIN: "https://example.com",
+    JWT_SECRET: "a".repeat(32),
+    JWT_REFRESH_SECRET: "b".repeat(32),
+  });
+  expect(valid.databaseUrl).toBe("postgres://localhost/app");
+  expect(() => createTestApp({ ...valid, databaseUrl: undefined })).toThrow("DATABASE_URL is required in production");
+});
+
 test("CORS allows configured origins and rejects unconfigured origins", async () => {
   const app = createTestApp({
     corsOrigin: ["http://allowed.example", "https://also-allowed.example"],

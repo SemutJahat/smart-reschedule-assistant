@@ -112,8 +112,29 @@ export class InMemoryAuthRepository implements AuthRepository {
   readonly users: UserRecord[] = [];
   readonly members: MemberRecord[] = [];
   readonly refreshTokens: RefreshTokenRecord[] = [];
+  private transactionTail: Promise<void> = Promise.resolve();
 
-  async transaction<T>(fn: (tx: AuthRepository) => Promise<T>): Promise<T> { return fn(this); }
+  async transaction<T>(fn: (tx: AuthRepository) => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const previous = this.transactionTail;
+    this.transactionTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    const snapshot = {
+      users: this.users.map((item) => ({ ...item, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) })),
+      members: this.members.map((item) => ({ ...item, joinedAt: new Date(item.joinedAt), createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) })),
+      refreshTokens: this.refreshTokens.map((item) => ({ ...item, expiresAt: new Date(item.expiresAt), revokedAt: item.revokedAt ? new Date(item.revokedAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) })),
+    };
+    try {
+      return await fn(this);
+    } catch (error) {
+      this.users.splice(0, this.users.length, ...snapshot.users);
+      this.members.splice(0, this.members.length, ...snapshot.members);
+      this.refreshTokens.splice(0, this.refreshTokens.length, ...snapshot.refreshTokens);
+      throw error;
+    } finally {
+      release();
+    }
+  }
   async findUserByEmail(email: string) { return this.users.find((item) => item.email === normalizeEmail(email)) ?? null; }
   async findUserById(id: string) { return this.users.find((item) => item.id === id) ?? null; }
   async listUsers() { return [...this.users]; }

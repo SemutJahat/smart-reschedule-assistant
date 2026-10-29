@@ -59,3 +59,22 @@ test("a customer can read and safely update their own user, but an admin control
   expect(roleUpdate.status).toBe(200);
   expect((await roleUpdate.json()).role).toBe("admin");
 });
+
+test("customers cannot update member status", async () => {
+  const customer = await register(app, "status@example.com", "Status");
+  const member = repository.members.find((item) => item.userId === customer.user.id)!;
+  const response = await app.handle(new Request(`http://localhost/members/${member.id}`, { method: "PATCH", body: JSON.stringify({ status: "suspended" }), headers: { "content-type": "application/json", authorization: `Bearer ${customer.accessToken}` } }));
+  expect(response.status).toBe(403);
+  expect((await response.json()).error.code).toBe("FORBIDDEN");
+});
+
+test("demoting an admin immediately removes privileged access despite a still-valid token", async () => {
+  const admin = await repository.insertUser({ email: "demote@example.com", passwordHash: await Bun.password.hash("admin-password", { algorithm: "argon2id" }), role: "admin", name: "Demote" });
+  const login = await app.handle(new Request("http://localhost/auth/login", { method: "POST", ...json({ email: admin.email, password: "admin-password" }) }));
+  const accessToken = (await login.json() as { accessToken: string }).accessToken;
+  const customer = await repository.insertUser({ email: "other@example.com", passwordHash: await Bun.password.hash("customer-password", { algorithm: "argon2id" }), role: "customer", name: "Other" });
+  await repository.updateUser(admin.id, { role: "customer" });
+  const response = await app.handle(new Request("http://localhost/users", { headers: { authorization: `Bearer ${accessToken}` } }));
+  expect(response.status).toBe(403);
+  expect(customer.role).toBe("customer");
+});

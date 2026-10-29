@@ -5,6 +5,8 @@ import type { AuthRepository, AuthUser, UserPatch } from "../auth/schema";
 export class UserService {
   constructor(private readonly repository: AuthRepository) {}
 
+  get authRepository(): AuthRepository { return this.repository; }
+
   async list() {
     return (await this.repository.listUsers()).map(sanitizeUser);
   }

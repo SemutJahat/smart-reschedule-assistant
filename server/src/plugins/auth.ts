@@ -1,7 +1,7 @@
 import { jwt } from "@elysiajs/jwt";
 import type { AnyElysia } from "elysia";
 import { AppError } from "../shared/errors";
-import type { AuthUser, UserRole } from "../modules/auth/schema";
+import type { AuthRepository, AuthUser, UserRole } from "../modules/auth/schema";
 
 export interface AuthPluginOptions {
   secret: string;
@@ -22,10 +22,15 @@ function bearer(headers: Headers | Record<string, string | undefined>): string |
 export async function requireAuth(context: {
   jwt: { verify(token?: string): Promise<Record<string, unknown> | false> };
   headers: Headers | Record<string, string | undefined>;
-}): Promise<AuthUser> {
+}, repository?: AuthRepository): Promise<AuthUser> {
   const payload = await context.jwt.verify(bearer(context.headers));
   if (!payload || typeof payload.userId !== "string" || (payload.role !== "admin" && payload.role !== "customer")) {
     throw new AppError("UNAUTHORIZED", "Authentication required", 401);
+  }
+  if (repository) {
+    const user = await repository.findUserById(payload.userId);
+    if (!user) throw new AppError("UNAUTHORIZED", "Authentication required", 401);
+    return { userId: user.id, role: user.role };
   }
   return { userId: payload.userId, role: payload.role };
 }
@@ -33,8 +38,9 @@ export async function requireAuth(context: {
 export async function requireRole(
   context: { jwt: { verify(token?: string): Promise<Record<string, unknown> | false> }; headers: Headers | Record<string, string | undefined> },
   role: UserRole,
+  repository?: AuthRepository,
 ): Promise<AuthUser> {
-  const user = await requireAuth(context);
+  const user = await requireAuth(context, repository);
   if (user.role !== role) throw new AppError("FORBIDDEN", "Forbidden", 403);
   return user;
 }

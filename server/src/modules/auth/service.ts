@@ -9,7 +9,15 @@ import type {
 } from "./schema";
 
 export const ACCESS_TOKEN_TTL = "15m";
-export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const REFRESH_TOKEN_TTL = "30d";
+export const REFRESH_TOKEN_TTL_MS = durationToMilliseconds(REFRESH_TOKEN_TTL);
+
+function durationToMilliseconds(duration: string): number {
+  const match = /^(\d+)([smhd])$/.exec(duration);
+  if (!match) throw new Error(`Unsupported token duration: ${duration}`);
+  const units = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+  return Number(match[1]) * units[match[2] as keyof typeof units];
+}
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -33,7 +41,7 @@ export async function digestRefreshToken(token: string): Promise<string> {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function bad(message: string, status = 400, code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" = "BAD_REQUEST"): never {
+function bad(message: string, status = 400, code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "CONFLICT" = "BAD_REQUEST"): never {
   throw new AppError(code, message, status);
 }
 
@@ -77,13 +85,16 @@ export class AuthService {
     const email = normalizeEmail(input.email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) bad("A valid email is required");
     return this.repository.transaction(async (tx) => {
-      if (await tx.findUserByEmail(email)) bad("Email is already registered", 409);
+      if (await tx.findUserByEmail(email)) bad("Email is already registered", 409, "CONFLICT");
       const passwordHash = await Bun.password.hash(input.password, { algorithm: "argon2id" });
       const name = input.name.trim();
       if (!name) bad("Name is required");
       const user = await tx.insertUser({ email, passwordHash, role: "customer", name });
       await tx.insertMember({ userId: user.id, memberNumber: `MEM-${user.id.slice(0, 8).toUpperCase()}`, phone: input.phone?.trim() || null });
       return this.issueTokens(tx, user);
+    }).catch((error: unknown) => {
+      if (isUniqueViolation(error)) throw new AppError("CONFLICT", "Email is already registered", 409);
+      throw error;
     });
   }
 
@@ -129,6 +140,10 @@ export class AuthService {
     if (!user) bad("User not found", 404);
     return sanitizeUser(user);
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && ("code" in error && error.code === "23505" || error instanceof Error && error.message === "duplicate email"));
 }
 
 export function assertUserRole(user: AuthUser, role: UserRole): void {

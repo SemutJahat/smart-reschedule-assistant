@@ -3,9 +3,10 @@ import { Elysia, t } from "elysia";
 import { loadConfig, type AppConfig } from "./config/env";
 import { errors } from "./plugins/errors";
 import { authPlugin } from "./plugins/auth";
-import { getDefaultDb } from "./db/client";
+import { createDb, getDefaultDb } from "./db/client";
 import { createAuthRepository, InMemoryAuthRepository } from "./modules/auth/repository";
 import { AuthService } from "./modules/auth/service";
+import { ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL } from "./modules/auth/service";
 import { authRoutes } from "./modules/auth/routes";
 import { UserService } from "./modules/users/service";
 import { userRoutes } from "./modules/users/routes";
@@ -22,9 +23,13 @@ export interface AppOptions {
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
+  if (config.nodeEnv === "production" && !config.databaseUrl) {
+    throw new Error("DATABASE_URL is required in production");
+  }
   const jwtSecret = config.jwtSecret;
   const refreshSecret = config.jwtRefreshSecret;
-  const db = options.repository ? null : getDefaultDb();
+  const db = options.repository ? null : config.databaseUrl ? createDb(config.databaseUrl) : getDefaultDb();
+  if (config.nodeEnv === "production" && !db) throw new Error("DATABASE_URL is required in production");
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
@@ -55,8 +60,8 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
     );
   const configured = secured
     .derive(({ jwt, refreshJwt }) => {
-      signAccessToken = (user) => jwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: "15m" });
-      signRefreshToken = (user) => refreshJwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: "30d" });
+      signAccessToken = (user) => jwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: ACCESS_TOKEN_TTL });
+      signRefreshToken = (user) => refreshJwt.sign({ userId: user.userId, role: user.role, jti: crypto.randomUUID(), exp: REFRESH_TOKEN_TTL });
       verifyRefreshToken = (token) => refreshJwt.verify(token) as Promise<{ userId?: string } | false>;
       return {};
     });

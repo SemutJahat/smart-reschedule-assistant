@@ -6,6 +6,7 @@ export interface AppConfig {
   corsOrigin: string | string[];
   jwtSecret: string;
   jwtRefreshSecret: string;
+  databaseUrl?: string;
 }
 
 const defaultConfig: AppConfig = {
@@ -80,14 +81,20 @@ function validateCorsOrigin(origin: string): string {
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
-  const jwtSecret = env.JWT_SECRET?.trim() || (env.NODE_ENV === "production" ? "" : defaultConfig.jwtSecret);
-  const jwtRefreshSecret = env.JWT_REFRESH_SECRET?.trim() || (env.NODE_ENV === "production" ? "" : defaultConfig.jwtRefreshSecret);
-  if (!jwtSecret || !jwtRefreshSecret) throw new Error("JWT_SECRET and JWT_REFRESH_SECRET are required in production");
+  const nodeEnv = parseNodeEnvironment(env.NODE_ENV);
+  const jwtSecret = env.JWT_SECRET?.trim() || (nodeEnv === "production" ? "" : defaultConfig.jwtSecret);
+  const jwtRefreshSecret = env.JWT_REFRESH_SECRET?.trim() || (nodeEnv === "production" ? "" : defaultConfig.jwtRefreshSecret);
+  if (nodeEnv === "production" && (!jwtSecret || jwtSecret.length < 32 || !jwtRefreshSecret || jwtRefreshSecret.length < 32)) {
+    throw new Error("JWT_SECRET and JWT_REFRESH_SECRET must each be at least 32 characters in production");
+  }
+  if (nodeEnv === "production" && !env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required in production");
+  if (nodeEnv === "production" && !env.CORS_ORIGIN?.trim()) throw new Error("CORS_ORIGIN is required in production");
   return {
-    nodeEnv: parseNodeEnvironment(env.NODE_ENV),
+    nodeEnv,
     port: parsePort(env.PORT),
     corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
     jwtSecret,
     jwtRefreshSecret,
+    databaseUrl: env.DATABASE_URL?.trim() || undefined,
   };
 }

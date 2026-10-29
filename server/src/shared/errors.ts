@@ -1,5 +1,6 @@
 export type ErrorCode =
   | "BAD_REQUEST"
+  | "CONFLICT"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "NOT_FOUND"
