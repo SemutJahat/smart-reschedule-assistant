@@ -1,0 +1,2699 @@
+{
+  "info": {
+    "_postman_id": "6e0d6e0d-9f0f-4f08-8f39-9a4d9a4d0001",
+    "name": "Gymnasyum Backend API",
+    "description": "Ordered happy-path and negative API verification flow for the Gymnasyum backend. Run with the local environment against a development database seeded with the demo admin and catalog service records.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "description": "Public health probe. Expected: HTTP 200 with status \"ok\".",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status field exists\", function () { pm.expect(body.status).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Customer",
+          "request": {
+            "method": "POST",
+            "description": "Public customer registration. Expected: HTTP 200 on first run; HTTP 409 if the demo email already exists.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\",\n  \"name\": \"Postman Customer\",\n  \"phone\": \"+1-555-0100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.environment.set(\"accessToken\", body.accessToken);",
+                  "  pm.environment.set(\"refreshToken\", body.refreshToken);",
+                  "  pm.environment.set(\"customerAccessToken\", body.accessToken);",
+                  "  pm.environment.set(\"customerRefreshToken\", body.refreshToken);",
+                  "}",
+                  "pm.test(\"response status is expected\", function () { pm.expect([200, 409]).to.include(pm.response.code); });",
+                  "if (pm.response.code === 200) pm.expect(pm.response.json().user.role).to.eql(\"customer\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Customer",
+          "request": {
+            "method": "POST",
+            "description": "Customer login. Expected: HTTP 200; saves accessToken and refreshToken.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"accessToken\", body.accessToken);",
+                  "pm.environment.set(\"refreshToken\", body.refreshToken);",
+                  "pm.environment.set(\"customerAccessToken\", body.accessToken);",
+                  "pm.environment.set(\"customerRefreshToken\", body.refreshToken);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"customer role exists\", function () { pm.expect(body.user.role).to.not.be.undefined; });",
+                  "pm.test(\"access token exists\", function () { pm.expect(body.accessToken).to.not.be.undefined; });",
+                  "pm.test(\"refresh token exists\", function () { pm.expect(body.refreshToken).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid Login",
+          "request": {
+            "method": "POST",
+            "description": "Negative invalid-login case. Expected: HTTP 401.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 401\", function () { pm.response.to.have.status(401); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register Admin Seed Email",
+          "request": {
+            "method": "POST",
+            "description": "Diagnostic seed prerequisite check only. Expected: HTTP 409 because admin@example.com must already be seeded. If HTTP 200 is returned, registration created a customer, which is intentionally never saved as an admin token; seed the admin account before running Login Admin.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"name\": \"Admin User\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.environment.unset(\"adminAccessToken\");",
+                  "  pm.environment.unset(\"adminRefreshToken\");",
+                  "  pm.test(\"fallback registration did not create an admin\", function () { pm.expect(body.user && body.user.role).to.eql(\"customer\"); });",
+                  "}",
+                  "pm.test(\"seeded admin prerequisite is available\", function () { pm.expect(pm.response.code, \"Admin seed is missing: registration returned a customer (HTTP 200); seed the admin account before Login Admin\").to.eql(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "description": "Seeded admin login. Expected: HTTP 200 with role \"admin\"; saves admin tokens only after the role assertion passes. Requires the seeded admin account.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (error) { body = {}; }",
+                  "const isAdmin = body.user && body.user.role === \"admin\";",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Login Admin returned the seeded admin role\", function () { pm.expect(isAdmin, \"Login Admin requires a seeded admin account; received role: \" + (body.user && body.user.role)).to.eql(true); });",
+                  "if (pm.response.code === 200 && isAdmin) {",
+                  "  pm.environment.set(\"accessToken\", body.accessToken);",
+                  "  pm.environment.set(\"refreshToken\", body.refreshToken);",
+                  "  pm.environment.set(\"adminAccessToken\", body.accessToken);",
+                  "  pm.environment.set(\"adminRefreshToken\", body.refreshToken);",
+                  "} else {",
+                  "  pm.environment.unset(\"accessToken\");",
+                  "  pm.environment.unset(\"refreshToken\");",
+                  "  pm.environment.unset(\"adminAccessToken\");",
+                  "  pm.environment.unset(\"adminRefreshToken\");",
+                  "}",
+                  "pm.test(\"access token exists for the admin account\", function () { pm.expect(isAdmin && body.accessToken, \"Admin token was not saved because the response user was not an admin\").to.be.ok; });",
+                  "pm.test(\"refresh token exists for the admin account\", function () { pm.expect(isAdmin && body.refreshToken, \"Admin refresh token was not saved because the response user was not an admin\").to.be.ok; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Admin Tokens",
+          "request": {
+            "method": "POST",
+            "description": "Refresh token rotation. Expected: HTTP 200; replaces both tokens.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"accessToken\", body.accessToken);",
+                  "pm.environment.set(\"refreshToken\", body.refreshToken);",
+                  "if (body.user.role === \"customer\") { pm.environment.set(\"customerAccessToken\", body.accessToken); pm.environment.set(\"customerRefreshToken\", body.refreshToken); }",
+                  "if (body.user.role === \"admin\") { pm.environment.set(\"adminAccessToken\", body.accessToken); pm.environment.set(\"adminRefreshToken\", body.refreshToken); }",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"replacement access token exists\", function () { pm.expect(body.accessToken).to.not.be.undefined; });",
+                  "pm.test(\"replacement refresh token exists\", function () { pm.expect(body.refreshToken).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current Admin User",
+          "request": {
+            "method": "GET",
+            "description": "Protected admin identity read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"role exists\", function () { pm.expect(body.role).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout Admin",
+          "request": {
+            "method": "POST",
+            "description": "Invalidate the seeded admin refresh token. Expected: HTTP 200 with success true; uses the admin bearer token and does not overwrite token variables.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"logout succeeded\", function () { pm.expect(body.success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Customer cannot list users",
+          "request": {
+            "method": "GET",
+            "description": "Negative role check. Customer uses admin-only route. Expected: HTTP 403.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cannot read another user",
+          "request": {
+            "method": "GET",
+            "description": "Negative ownership check. Customer attempts to read the seeded admin user. Expected: HTTP 403.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/00000000-0000-4000-8000-000000000001",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "00000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list users",
+          "request": {
+            "method": "GET",
+            "description": "Admin user list. Expected: HTTP 200 with an array.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin read customer user",
+          "request": {
+            "method": "GET",
+            "description": "Admin reads seeded customer user. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/00000000-0000-4000-8000-000000000002",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "00000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"role exists\", function () { pm.expect(body.role).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update customer user",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the seeded customer user name. Expected: HTTP 200 with the updated user record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/00000000-0000-4000-8000-000000000002",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "00000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Customer Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated user id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"updated user name is returned\", function () { pm.expect(body.name).to.eql(\"Postman Customer Updated\"); });",
+                  "pm.test(\"updated user remains a customer\", function () { pm.expect(body.role).to.eql(\"customer\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Members",
+      "item": [
+        {
+          "name": "Read my member",
+          "request": {
+            "method": "GET",
+            "description": "Customer reads own member profile. Expected: HTTP 200; saves memberId.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/members/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"memberId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"member id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"member user id exists\", function () { pm.expect(body.userId).to.not.be.undefined; });",
+                  "pm.test(\"member status exists\", function () { pm.expect(body.status).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update my member profile",
+          "request": {
+            "method": "PATCH",
+            "description": "Customer updates own profile. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+1-555-0101\",\n  \"emergencyContact\": \"+1-555-0199\",\n  \"weight\": \"76.00\",\n  \"height\": \"180.00\",\n  \"bloodType\": \"O+\",\n  \"medicalHistory\": \"None\",\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated member id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"updated phone exists\", function () { pm.expect(body.phone).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list members",
+          "request": {
+            "method": "GET",
+            "description": "Admin member list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin read member",
+          "request": {
+            "method": "GET",
+            "description": "Admin reads customer member. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"member id exists\", function () { pm.expect(body.id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coaches",
+      "item": [
+        {
+          "name": "Customer cannot create coach",
+          "request": {
+            "method": "POST",
+            "description": "Negative role check. Customer cannot create coaches. Expected: HTTP 403.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coaches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coaches"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Forbidden Coach\",\n  \"phone\": null,\n  \"specialty\": null,\n  \"bio\": null,\n  \"serviceIds\": [\n    \"{{serviceId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list coaches",
+          "request": {
+            "method": "GET",
+            "description": "Admin coach list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/coaches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coaches"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin create coach",
+          "request": {
+            "method": "POST",
+            "description": "Admin creates coach associated to seeded service. Expected: HTTP 200; saves coachId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coaches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coaches"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Coach\",\n  \"phone\": \"+1-555-0110\",\n  \"specialty\": \"Yoga\",\n  \"bio\": \"API demo coach\",\n  \"status\": \"active\",\n  \"serviceIds\": [\n    \"{{serviceId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"coachId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"coach id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"coach services exist\", function () { pm.expect(body.serviceIds).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update coach",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates coach. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coaches/{{coachId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coaches",
+                "{{coachId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specialty\": \"Mobility and Yoga\",\n  \"bio\": \"Updated coach\",\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated coach id exists\", function () { pm.expect(body.id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Packages",
+      "item": [
+        {
+          "name": "Admin create package",
+          "request": {
+            "method": "POST",
+            "description": "Admin creates active package. Expected: HTTP 200; saves packageId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/packages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Starter 5\",\n  \"category\": \"personal_training\",\n  \"description\": \"Five coached sessions\",\n  \"price\": 75,\n  \"totalSessions\": 5,\n  \"validityDays\": 45,\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"packageId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"package id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"price exists\", function () { pm.expect(body.price).to.not.be.undefined; });",
+                  "pm.test(\"status exists\", function () { pm.expect(body.status).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update package",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the package created by the preceding request. Expected: HTTP 200 with the updated package record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/packages/{{packageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages",
+                "{{packageId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Five coached sessions, updated by Postman\",\n  \"price\": 80\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated package id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"packageId\")); });",
+                  "pm.test(\"updated package description is returned\", function () { pm.expect(body.description).to.eql(\"Five coached sessions, updated by Postman\"); });",
+                  "pm.test(\"updated package price exists\", function () { pm.expect(body.price).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer list active packages",
+          "request": {
+            "method": "GET",
+            "description": "Customer catalog read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/packages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid package rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative validation case. Expected: HTTP 422.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/packages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Invalid Package\",\n  \"category\": \"invalid\",\n  \"description\": null,\n  \"price\": 0,\n  \"totalSessions\": 0,\n  \"validityDays\": 0,\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 422\", function () { pm.response.to.have.status(422); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"validation error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "Admin create source schedule",
+          "request": {
+            "method": "POST",
+            "description": "Admin creates capacity-one source schedule. Expected: HTTP 200; saves scheduleId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Morning Yoga\",\n  \"coachId\": \"{{coachId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"2030-06-01T09:00:00.000Z\",\n  \"endsAt\": \"2030-06-01T10:00:00.000Z\",\n  \"capacity\": 1,\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"scheduleId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"schedule id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"booked count exists\", function () { pm.expect(body.bookedCount).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin create target schedule",
+          "request": {
+            "method": "POST",
+            "description": "Admin creates target reschedule. Expected: HTTP 200; saves targetScheduleId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Evening Yoga\",\n  \"coachId\": \"{{coachId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"2030-06-01T11:00:00.000Z\",\n  \"endsAt\": \"2030-06-01T12:00:00.000Z\",\n  \"capacity\": 5,\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"targetScheduleId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"target schedule id exists\", function () { pm.expect(body.id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin update source schedule",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates the source schedule created by the preceding request. Expected: HTTP 200 with the updated schedule record.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/schedules/{{scheduleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules",
+                "{{scheduleId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Morning Yoga Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"updated schedule id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"scheduleId\")); });",
+                  "pm.test(\"updated schedule title is returned\", function () { pm.expect(body.title).to.eql(\"Postman Morning Yoga Updated\"); });",
+                  "pm.test(\"schedule booked count exists\", function () { pm.expect(body.bookedCount).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer list schedules",
+          "request": {
+            "method": "GET",
+            "description": "Customer schedule read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid schedule rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative validation case. Expected: HTTP 422.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Invalid Schedule\",\n  \"coachId\": \"not-a-uuid\",\n  \"serviceId\": \"not-a-uuid\",\n  \"startsAt\": \"not-a-date\",\n  \"endsAt\": \"not-a-date\",\n  \"capacity\": 0,\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 422\", function () { pm.response.to.have.status(422); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"validation error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Customer create payment",
+          "request": {
+            "method": "POST",
+            "description": "Customer creates pending payment. Expected: HTTP 200; saves paymentId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"packageId\": \"{{packageId}}\",\n  \"method\": \"bank transfer\",\n  \"reference\": \"postman-payment-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"paymentId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"member id exists\", function () { pm.expect(body.memberId).to.not.be.undefined; });",
+                  "pm.test(\"payment status exists\", function () { pm.expect(body.status).to.not.be.undefined; });",
+                  "pm.expect(pm.response.json().status).to.eql(\"pending\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer list own payments",
+          "request": {
+            "method": "GET",
+            "description": "Customer own payment list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cannot list admin payments",
+          "request": {
+            "method": "GET",
+            "description": "Negative role check. Expected: HTTP 403.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin mark payment paid",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin marks pending payment paid. Expected: HTTP 200; creates subscription and saves subscriptionId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}",
+                "status"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"subscriptionId\", body.subscriptionId);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"subscription id exists\", function () { pm.expect(body.subscriptionId).to.not.be.undefined; });",
+                  "pm.expect(pm.response.json().status).to.eql(\"paid\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list paid payments",
+          "request": {
+            "method": "GET",
+            "description": "Admin payment list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Customer list subscriptions",
+          "request": {
+            "method": "GET",
+            "description": "Customer subscription read after payment is marked paid. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json(); pm.test(\"created subscription is present\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"subscriptionId\"); })).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Customer create booking",
+          "request": {
+            "method": "POST",
+            "description": "Customer books source schedule. Expected: HTTP 200; saves bookingId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"{{scheduleId}}\",\n  \"subscriptionId\": \"{{subscriptionId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"bookingId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"booking id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"member id exists\", function () { pm.expect(body.memberId).to.not.be.undefined; });",
+                  "pm.test(\"booking status exists\", function () { pm.expect(body.status).to.not.be.undefined; });",
+                  "pm.expect(pm.response.json().status).to.eql(\"booked\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer full or duplicate booking rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative full/duplicate booking case. Expected: HTTP 409.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"{{scheduleId}}\",\n  \"subscriptionId\": \"{{subscriptionId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 409\", function () { pm.response.to.have.status(409); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"conflict error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid booking rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative malformed identifier case. Expected: HTTP 422.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"not-a-uuid\",\n  \"subscriptionId\": \"not-a-uuid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 422\", function () { pm.response.to.have.status(422); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"validation error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer list own bookings",
+          "request": {
+            "method": "GET",
+            "description": "Customer own booking list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list bookings",
+          "request": {
+            "method": "GET",
+            "description": "Admin booking list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reschedule Requests",
+      "item": [
+        {
+          "name": "Customer create reschedule request",
+          "request": {
+            "method": "POST",
+            "description": "Customer requests reschedule. Expected: HTTP 200; saves rescheduleId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"requestedScheduleId\": \"{{targetScheduleId}}\",\n  \"customerMessage\": \"Please move this booking to the later class.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set(\"rescheduleId\", body.id);",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"request id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"booking id exists\", function () { pm.expect(body.bookingId).to.not.be.undefined; });",
+                  "pm.test(\"source id exists\", function () { pm.expect(body.fromScheduleId).to.not.be.undefined; });",
+                  "pm.test(\"target id exists\", function () { pm.expect(body.toScheduleId).to.not.be.undefined; });",
+                  "pm.expect(pm.response.json().status).to.eql(\"pending\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cannot review request",
+          "request": {
+            "method": "PATCH",
+            "description": "Negative role check. Customer cannot review. Expected: HTTP 403.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests/{{rescheduleId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests",
+                "{{rescheduleId}}",
+                "review"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"adminNote\": \"Not allowed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(body.error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list pending requests",
+          "request": {
+            "method": "GET",
+            "description": "Admin request list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin approve request",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin reviews request. Expected: HTTP 200 with approved status and reviewer.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests/{{rescheduleId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests",
+                "{{rescheduleId}}",
+                "review"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"adminNote\": \"Approved by Postman flow\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"request id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"reviewer exists\", function () { pm.expect(body.reviewedBy).to.not.be.undefined; });",
+                  "pm.test(\"review timestamp exists\", function () { pm.expect(body.reviewedAt).to.not.be.undefined; });",
+                  "pm.expect(pm.response.json().status).to.eql(\"approved\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cancel booking",
+          "request": {
+            "method": "PATCH",
+            "description": "Customer cancels the booking after the reschedule flow completes. Expected: HTTP 200 with cancelled status. The endpoint has no request fields; an empty JSON object is sent explicitly.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"cancelled booking id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"bookingId\")); });",
+                  "pm.test(\"booking status is cancelled\", function () { pm.expect(body.status).to.eql(\"cancelled\"); });",
+                  "pm.test(\"cancelled timestamp exists\", function () { pm.expect(body.cancelledAt).to.not.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer list own requests",
+          "request": {
+            "method": "GET",
+            "description": "Customer own request list. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json(); pm.test(\"approved request is present\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"rescheduleId\"); })).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer member read",
+          "request": {
+            "method": "GET",
+            "description": "Final customer member read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/members/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"member id exists\", function () { pm.expect(pm.response.json().id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer package read",
+          "request": {
+            "method": "GET",
+            "description": "Final package catalog read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/packages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "packages"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"package response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer schedule read",
+          "request": {
+            "method": "GET",
+            "description": "Final schedule read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "schedules"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"schedule response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer payment read",
+          "request": {
+            "method": "GET",
+            "description": "Final payment read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer subscription read",
+          "request": {
+            "method": "GET",
+            "description": "Final subscription read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"subscription response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final customer booking read",
+          "request": {
+            "method": "GET",
+            "description": "Final booking read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"booking response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Final admin request read",
+          "request": {
+            "method": "GET",
+            "description": "Final admin request read. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reschedule-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reschedule-requests"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"request response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

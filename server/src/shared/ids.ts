@@ -1,0 +1,20 @@
+export function createId(): string {
+  return crypto.randomUUID();
+}
+
+/** Stable identifiers used by the repeatable development seed. */
+export const seedIds = {
+  adminUser: "00000000-0000-4000-8000-000000000001",
+  customerUser: "00000000-0000-4000-8000-000000000002",
+  member: "00000000-0000-4000-8000-000000000003",
+  coachOne: "00000000-0000-4000-8000-000000000004",
+  coachTwo: "00000000-0000-4000-8000-000000000005",
+  serviceYoga: "00000000-0000-4000-8000-000000000006",
+  serviceStrength: "00000000-0000-4000-8000-000000000007",
+  packageStarter: "00000000-0000-4000-8000-000000000008",
+  packageUnlimited: "00000000-0000-4000-8000-000000000009",
+  subscription: "00000000-0000-4000-8000-00000000000a",
+  scheduleYoga: "00000000-0000-4000-8000-00000000000b",
+  scheduleStrength: "00000000-0000-4000-8000-00000000000c",
+  payment: "00000000-0000-4000-8000-00000000000d",
+} as const;
