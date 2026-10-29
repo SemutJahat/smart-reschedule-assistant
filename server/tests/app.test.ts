@@ -56,6 +56,9 @@ test("production configuration requires database, strong JWT secrets, and explic
     CORS_ORIGIN: "https://example.com",
     JWT_SECRET: "a".repeat(32),
     JWT_REFRESH_SECRET: "b".repeat(32),
+    GEN_AI_MODE: "http",
+    GEN_AI_BASE_URL: "https://ai.example",
+    GEN_AI_API_KEY: "test-key",
   });
   expect(valid.databaseUrl).toBe("postgres://localhost/app");
   expect(() => createTestApp({ ...valid, databaseUrl: undefined })).toThrow("DATABASE_URL is required in production");

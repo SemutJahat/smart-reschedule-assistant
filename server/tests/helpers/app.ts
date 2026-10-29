@@ -19,6 +19,9 @@ export function createTestApp(overrides: Partial<AppConfig> = {}, repository?: A
     corsOrigin: "http://localhost:5173",
     jwtSecret: "test-jwt-secret",
     jwtRefreshSecret: "test-refresh-secret",
+    genAiModel: "deterministic-stub",
+    genAiTimeoutMs: 10_000,
+    genAiMode: "stub",
     ...overrides,
   }, { repository: repository ?? new InMemoryAuthRepository(), catalogRepository: catalog, paymentRepository: payments, bookingRepository: bookings, rescheduleRepository });
 }

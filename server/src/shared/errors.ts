@@ -5,6 +5,8 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
+  | "AI_SERVICE_UNAVAILABLE"
+  | "AI_INVALID_RESPONSE"
   | "INTERNAL_SERVER_ERROR";
 
 export interface ErrorDetails {
