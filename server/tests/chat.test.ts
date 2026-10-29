@@ -18,6 +18,8 @@ import type { RescheduleRequestRecord } from "../src/modules/reschedules/schema"
  * The repository, coordinator, and service implementations are introduced by
  * later tasks; keeping the fakes here makes the behavioral contract executable
  * without an Elysia app or a database.
+ * These fakes intentionally do not model concurrency or unique constraints;
+ * Task 3 repository tests cover those persistence guarantees.
  */
 class FakeChatRepository implements ChatRepository {
   readonly sessions: ChatSessionRecord[] = [];
@@ -137,6 +139,8 @@ const SAFE_FALLBACK_REPLY = "I couldn't process that request right now. Please t
 async function makeService(chat: FakeChatRepository, ai: FakeAiClient, overrides: Record<string, unknown> = {}) {
   // The concrete dependency object is deliberately opaque to this contract
   // suite so later repository/coordinator tasks can choose their adapters.
+  // Once ChatService exists, replace this dynamic import and `as never` with
+  // its typed constructor/dependency interface.
   const serviceModule: string = "../src/modules/chat/service";
   const { ChatService } = await import(serviceModule);
   return new ChatService({ chat, ai, ...overrides } as never);
@@ -247,5 +251,10 @@ test("a failed AI call persists the failed-analysis sentinel", async () => {
   const clientMessageId = "00000000-0000-4000-8000-000000000017";
   await expect(service.sendMessage(user, session.id, { message: "Move me", clientMessageId })).rejects.toMatchObject({ code: "AI_SERVICE_UNAVAILABLE" });
   expect(chat.messages).toContainEqual(expect.objectContaining({ role: "user", content: "Move me", clientMessageId }));
+  expect(chat.messages).toContainEqual(expect.objectContaining({ role: "assistant", content: SAFE_FALLBACK_REPLY }));
   expect(chat.analyses.at(-1)).toMatchObject({ status: "failed", errorCode: "AI_SERVICE_UNAVAILABLE", intent: "Other", confidence: 0, extractedData: {}, recommendedScheduleIds: [], nextState: "active", reply: SAFE_FALLBACK_REPLY, model: "unavailable", modelVersion: "unavailable" });
+  const persistedSession = chat.sessions.find((item) => item.id === session.id);
+  expect(persistedSession).toMatchObject({ status: "active", currentIntent: null, proposedScheduleId: null });
+  expect(persistedSession?.status).toBe("active");
+  expect(reschedule.requests).toHaveLength(0);
 });
