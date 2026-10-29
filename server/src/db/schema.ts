@@ -321,6 +321,9 @@ export const payments = pgTable(
     memberId: uuid("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "restrict" }),
+    packageId: uuid("package_id")
+      .notNull()
+      .references(() => packages.id, { onDelete: "restrict" }),
     subscriptionId: uuid("subscription_id")
       .references(() => subscriptions.id, { onDelete: "restrict" }),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
@@ -332,6 +335,7 @@ export const payments = pgTable(
   },
   (table) => [
     index("payments_member_idx").on(table.memberId),
+    index("payments_package_idx").on(table.packageId),
     index("payments_subscription_idx").on(table.subscriptionId),
     uniqueIndex("payments_reference_uidx").on(table.reference),
     check("payments_amount_nonnegative_chk", sql`${table.amount} >= 0`),

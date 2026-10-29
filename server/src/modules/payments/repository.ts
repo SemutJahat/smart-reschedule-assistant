@@ -6,30 +6,11 @@ import type { CatalogRepository, PackageRecord } from "../coaches/schema";
 import type { NewPayment, NewSubscription, PaymentFilters, PaymentPatch, PaymentRecord, PaymentRepository, SubscriptionRecord } from "./schema";
 
 type DbExecutor = any;
-const marker = "__sra_package_v1:";
-
-function encodeReference(packageId: string, reference: string | null): string {
-  // The current database schema has no package_id on payments. Keep the package intent
-  // in the existing nullable reference column, while never exposing this implementation detail.
-  const nonce = crypto.randomUUID();
-  return `${marker}${packageId}:${nonce}:${reference ?? ""}`;
-}
-
-function decodeReference(value: string | null): { packageId: string | null; reference: string | null } {
-  if (!value?.startsWith(marker)) return { packageId: null, reference: value };
-  const rest = value.slice(marker.length);
-  const first = rest.indexOf(":");
-  const second = rest.indexOf(":", first + 1);
-  if (first < 1 || second < 0) return { packageId: null, reference: value };
-  const reference = rest.slice(second + 1);
-  return { packageId: rest.slice(0, first), reference: reference || null };
-}
 
 function packageRecord(row: typeof packages.$inferSelect): PackageRecord { return row; }
 
 function paymentRecord(row: typeof payments.$inferSelect): PaymentRecord {
-  const decoded = decodeReference(row.reference);
-  return { ...row, packageId: decoded.packageId ?? "", reference: decoded.reference };
+  return row;
 }
 
 function subscriptionRecord(row: typeof subscriptions.$inferSelect): SubscriptionRecord { return row; }
@@ -57,8 +38,8 @@ export class DrizzlePaymentRepository implements PaymentRepository {
   }
 
   async insertPayment(input: NewPayment) {
-    const rows = await this.db.insert(payments).values({ memberId: input.memberId, amount: input.amount, status: "pending", method: input.method ?? null, reference: encodeReference(input.packageId, input.reference ?? null) }).returning();
-    return { ...paymentRecord(rows[0]), packageId: input.packageId };
+    const rows = await this.db.insert(payments).values({ memberId: input.memberId, packageId: input.packageId, amount: input.amount, status: "pending", method: input.method ?? null, reference: input.reference ?? null }).returning();
+    return paymentRecord(rows[0]);
   }
 
   async updatePayment(id: string, patch: PaymentPatch) {

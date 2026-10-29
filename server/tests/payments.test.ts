@@ -36,14 +36,26 @@ test("customer creates and reads only their pending payment, with sanitized inpu
   const admin = await login("admin@example.com");
   const customer = await login("customer@example.com");
   const packageItem = await createPackage(admin.accessToken);
-  const created = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, method: "  cash  ", reference: "  receipt-1  " }, customer.accessToken) }));
+  const created = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, method: null, reference: null }, customer.accessToken) }));
   expect(created.status).toBe(200);
   const payment = await created.json() as Record<string, unknown>;
-  expect(payment).toMatchObject({ amount: "25.00", status: "pending", method: "cash", reference: "receipt-1", subscriptionId: null });
+  expect(payment).toMatchObject({ amount: "25.00", status: "pending", packageId: packageItem.id, method: null, reference: null, subscriptionId: null });
   expect(payment).not.toHaveProperty("passwordHash");
   expect(payments.subscriptions).toHaveLength(0);
   expect((await app.handle(new Request("http://localhost/payments/me", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
   expect((await app.handle(new Request("http://localhost/payments", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(403);
+});
+
+test("preserves trimmed payment fields and accepts the varchar reference limit", async () => {
+  const admin = await login("admin@example.com");
+  const customer = await login("customer@example.com");
+  const packageItem = await createPackage(admin.accessToken);
+  const reference = "r".repeat(255);
+  const created = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, method: "  bank transfer ", reference }, customer.accessToken) }));
+  expect(created.status).toBe(200);
+  expect(await created.json()).toEqual(expect.objectContaining({ method: "bank transfer", reference, packageId: packageItem.id }));
+  const tooLong = await app.handle(new Request("http://localhost/payments", { method: "POST", ...json({ packageId: packageItem.id, reference: "r".repeat(256) }, customer.accessToken) }));
+  expect([400, 422]).toContain(tooLong.status);
 });
 
 test("admin filters payments and paid transition creates one expiring subscription", async () => {
@@ -58,9 +70,15 @@ test("admin filters payments and paid transition creates one expiring subscripti
   expect(paidBody.status).toBe("paid");
   expect(paidBody.subscriptionId).toBeString();
   expect(payments.subscriptions).toHaveLength(1);
+  expect(payments.subscriptions[0]?.packageId).toBe(packageItem.id);
+  expect(payments.subscriptions[0]?.amountPaid).toBe("25.00");
   expect(payments.subscriptions[0]?.totalSessions).toBe(5);
   expect(payments.subscriptions[0]?.expiresAt.getTime() - payments.subscriptions[0]!.startsAt.getTime()).toBe(30 * 24 * 60 * 60 * 1000);
   expect((await app.handle(new Request("http://localhost/payments?status=paid", { headers: { authorization: `Bearer ${admin.accessToken}` } }))).status).toBe(200);
+  const memberId = auth.members.find((member) => member.userId === auth.users.find((user) => user.email === "customer@example.com")?.id)?.id;
+  const filtered = await app.handle(new Request(`http://localhost/payments?memberId=${memberId}`, { headers: { authorization: `Bearer ${admin.accessToken}` } }));
+  expect(filtered.status).toBe(200);
+  expect(await filtered.json()).toHaveLength(1);
   expect((await app.handle(new Request(`http://localhost/payments/${payment.id}/status`, { method: "PATCH", ...json({ status: "paid" }, admin.accessToken) }))).status).toBe(409);
   expect((await app.handle(new Request("http://localhost/subscriptions/me", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
 });

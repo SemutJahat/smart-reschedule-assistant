@@ -1,6 +1,5 @@
 import { AppError } from "../../shared/errors";
 import type { AuthRepository, AuthUser } from "../auth/schema";
-import type { PackageRecord } from "../coaches/schema";
 import type { NewPayment, PaymentFilters, PaymentRecord, PaymentRepository, SubscriptionRecord } from "./schema";
 
 function money(value: string): string { const parsed = Number(value); return Number.isFinite(parsed) ? parsed.toFixed(2) : value; }
@@ -15,9 +14,9 @@ export class PaymentService {
     if (!member) throw new AppError("NOT_FOUND", "Member not found", 404);
     const packageItem = await this.repository.findPackage(input.packageId);
     if (!packageItem || packageItem.status !== "active") throw new AppError("NOT_FOUND", "Package not found", 404);
-    const method = input.method?.trim() || "manual";
+    const method = input.method === undefined || input.method === null ? null : input.method.trim() || null;
     const reference = input.reference?.trim() || null;
-    if (method.length > 64) throw new AppError("BAD_REQUEST", "Payment method is too long", 400);
+    if (method && method.length > 64) throw new AppError("BAD_REQUEST", "Payment method is too long", 400);
     if (reference && reference.length > 255) throw new AppError("BAD_REQUEST", "Payment reference is too long", 400);
     return this.repository.transaction(async (tx) => serializePayment(await tx.insertPayment({ memberId: member.id, packageId: packageItem.id, amount: money(packageItem.price), method, reference })));
   }

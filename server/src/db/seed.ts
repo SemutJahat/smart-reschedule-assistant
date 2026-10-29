@@ -182,9 +182,9 @@ async function seed(): Promise<void> {
       startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "75.00",
     }).onConflictDoUpdate({ target: subscriptions.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active", startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "75.00", updatedAt: now } });
     await tx.insert(payments).values({
-      id: seedIds.payment, memberId: seedIds.member, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid",
+      id: seedIds.payment, memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid",
       method: "seed", reference: "seed-payment-0001", paidAt: now,
-    }).onConflictDoUpdate({ target: payments.id, set: { memberId: seedIds.member, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid", method: "seed", reference: "seed-payment-0001", paidAt: now, updatedAt: now } });
+    }).onConflictDoUpdate({ target: payments.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid", method: "seed", reference: "seed-payment-0001", paidAt: now, updatedAt: now } });
     await tx.insert(schedules).values([
       { id: seedIds.scheduleYoga, title: "Morning Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 25 * 60 * 60 * 1000), capacity: 10, status: "available" },
       { id: seedIds.scheduleStrength, title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: new Date(now.getTime() + 48 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 49 * 60 * 60 * 1000), capacity: 8, status: "available" },
