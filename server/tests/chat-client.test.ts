@@ -76,12 +76,16 @@ test("HTTP client sends bearer/model/context and maps failures without leaking s
     fetchImpl: async (_input, init) => {
       request = init;
       return new Response(JSON.stringify({
-        intent: "Other", confidence: 0.5, extracted: {}, recommendedScheduleIds: [],
+        intent: "Other", confidence: 0.5, extracted: {}, recommendedScheduleIds: [scheduleId],
         reply: "No change.", nextState: "active", model: "model-1", modelVersion: "v1",
       }), { status: 200, headers: { "content-type": "application/json" } });
     },
   });
-  await client.analyze(context());
+  await expect(client.analyze(context())).resolves.toMatchObject({
+    intent: "Other",
+    recommendedScheduleIds: [scheduleId],
+    nextState: "active",
+  });
   expect(request?.method).toBe("POST");
   expect(new Headers(request?.headers).get("authorization")).toBe("Bearer top-secret-key");
   expect(JSON.parse(String(request?.body))).toMatchObject({ model: "model-1", context: { policy: { policyVersion: "2026-01" } } });
