@@ -16,6 +16,7 @@ let customerToken: string;
 let otherToken: string;
 let adminToken: string;
 let bookingId: string;
+let memberId: string;
 let sourceId: string;
 let targetId: string;
 
@@ -32,6 +33,7 @@ beforeEach(async () => {
   const customer = await auth.insertUser({ email: "customer@example.com", passwordHash, name: "Customer" });
   const other = await auth.insertUser({ email: "other@example.com", passwordHash, name: "Other" });
   const member = await auth.insertMember({ userId: customer.id, memberNumber: "M-1" });
+  memberId = member.id;
   await auth.insertMember({ userId: other.id, memberNumber: "M-2" });
   adminToken = (await login(admin.email)).accessToken; customerToken = (await login(customer.email)).accessToken; otherToken = (await login(other.email)).accessToken;
   sourceId = id(); targetId = id(); catalog.schedules.push(schedule(sourceId, 2), schedule(targetId, 2));
@@ -49,6 +51,23 @@ test("creates requests only for the owner and isolates customer lists", async ()
   expect((await app.handle(new Request("http://localhost/reschedule-requests", { headers: { authorization: `Bearer ${adminToken}` } }))).status).toBe(200);
 });
 
+test("rejects a reschedule request for a non-booked booking", async () => {
+  const cancelled = await app.handle(new Request(`http://localhost/bookings/${bookingId}/cancel`, { method: "PATCH", headers: { authorization: `Bearer ${customerToken}` } }));
+  expect(cancelled.status).toBe(200);
+  const response = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  expect(response.status).toBe(409);
+});
+
+test("admin filters by status and member while customers cannot use admin endpoints", async () => {
+  const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  const request = await created.json() as { id: string };
+  await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "held" }, adminToken) }));
+  const filtered = await app.handle(new Request(`http://localhost/reschedule-requests?status=held&memberId=${memberId}`, { headers: { authorization: `Bearer ${adminToken}` } }));
+  expect(filtered.status).toBe(200);
+  expect(await filtered.json()).toHaveLength(1);
+  expect((await app.handle(new Request("http://localhost/reschedule-requests", { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(403);
+});
+
 test("rejects same, cancelled, full, and duplicate requests", async () => {
   for (const requestedScheduleId of [sourceId]) expect((await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId, customerMessage: "x" }, customerToken) }))).status).toBe(409);
   catalog.schedules.find((item) => item.id === targetId)!.status = "cancelled";
@@ -62,12 +81,22 @@ test("rejects same, cancelled, full, and duplicate requests", async () => {
   expect((await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }))).status).toBe(409);
 });
 
-test("approval moves booking and repairs counts; held and rejected do not", async () => {
+test("held requests can be rejected without moving the booking", async () => {
   const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
   const request = await created.json() as { id: string };
   const held = await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "held", adminNote: "Need to verify" }, adminToken) }));
   expect(held.status).toBe(200); expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(sourceId);
-  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "rejected" }, adminToken) }))).status).toBe(409);
+  const rejected = await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "rejected" }, adminToken) }));
+  expect(rejected.status).toBe(200);
+  expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(sourceId);
+});
+
+test("held requests can later be approved", async () => {
+  const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  const request = await created.json() as { id: string };
+  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "held" }, adminToken) }))).status).toBe(200);
+  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "approved" }, adminToken) }))).status).toBe(200);
+  expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(targetId);
 });
 
 test("approved request moves booking, updates both schedule statuses, and records reviewer", async () => {

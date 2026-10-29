@@ -50,6 +50,13 @@
       "when": 1793245012208,
       "tag": "0006_harden_booking_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793256555447,
+      "tag": "0007_lean_snowbird",
+      "breakpoints": true
     }
   ]
 }

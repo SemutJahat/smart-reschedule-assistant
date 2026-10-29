@@ -305,11 +305,6 @@ export const rescheduleRequests = pgTable(
     uniqueIndex("reschedule_requests_active_booking_uidx")
       .on(table.bookingId)
       .where(sql`${table.status} in ('pending', 'held')`),
-    foreignKey({
-      columns: [table.bookingId, table.memberId, table.fromScheduleId],
-      foreignColumns: [bookings.id, bookings.memberId, bookings.scheduleId],
-      name: "reschedule_requests_booking_member_from_schedule_fk",
-    }),
     check("reschedule_requests_different_schedule_chk", sql`${table.fromScheduleId} <> ${table.toScheduleId}`),
   ],
 );
