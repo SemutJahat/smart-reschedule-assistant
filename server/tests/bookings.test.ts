@@ -32,6 +32,13 @@ test("maps PostgreSQL active-booking duplicate errors with constraint_name to co
   expect(conflict?.status).toBe(409);
 });
 
+test("maps database booking invariant errors to conflicts", () => {
+  expect(bookingDuplicateConflict({ code: "P0001", message: "BOOKING_CAPACITY_EXCEEDED: schedule is full" })?.status).toBe(409);
+  expect(bookingDuplicateConflict({ code: "P0002", message: "BOOKING_SCHEDULE_CANCELLED: schedule is cancelled" })?.status).toBe(409);
+  expect(bookingDuplicateConflict({ code: "P0004", message: "BOOKING_SUBSCRIPTION_QUOTA_EXHAUSTED: no sessions" })?.status).toBe(409);
+  expect(bookingDuplicateConflict({ cause: { code: "P0006", message: "BOOKING_CAPACITY_REDUCTION: too many" } })?.status).toBe(409);
+});
+
 beforeEach(async () => {
   auth = new InMemoryAuthRepository(); catalog = new InMemoryCatalogRepository(); payments = new InMemoryPaymentRepository(catalog); app = createTestApp({}, auth, catalog, payments);
   const admin = await auth.insertUser({ email: "admin@example.com", passwordHash: await Bun.password.hash("password-123", { algorithm: "argon2id" }), name: "Admin", role: "admin" });

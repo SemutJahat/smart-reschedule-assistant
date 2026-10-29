@@ -43,6 +43,13 @@
       "when": 1793242232929,
       "tag": "0005_booking_capacity_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793245012208,
+      "tag": "0006_harden_booking_invariants",
+      "breakpoints": true
     }
   ]
 }

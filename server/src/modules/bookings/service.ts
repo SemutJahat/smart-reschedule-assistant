@@ -18,10 +18,12 @@ function validateDate(value: string | undefined) {
 
 type DatabaseErrorShape = {
   code?: unknown;
+  message?: unknown;
   constraint?: unknown;
   constraint_name?: unknown;
   cause?: {
     code?: unknown;
+    message?: unknown;
     constraint?: unknown;
     constraint_name?: unknown;
   };
@@ -36,9 +38,18 @@ export function bookingDuplicateConflict(error: unknown): AppError | null {
     ?? databaseError.constraint_name
     ?? nested?.constraint
     ?? nested?.constraint_name;
+  const message = typeof databaseError.message === "string"
+    ? databaseError.message
+    : typeof nested?.message === "string" ? nested.message : "";
   if (code === "23505" && constraint === "bookings_member_schedule_active_uidx") {
     return new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
   }
+  if (code === "P0001" && message.includes("BOOKING_CAPACITY_EXCEEDED")) return new AppError("CONFLICT", "Schedule is full", 409);
+  if (code === "P0002" && message.includes("BOOKING_SCHEDULE_CANCELLED")) return new AppError("CONFLICT", "Schedule is cancelled", 409);
+  if (code === "P0003" && message.includes("BOOKING_SUBSCRIPTION_INACTIVE_OR_EXPIRED")) return new AppError("CONFLICT", "Subscription is not active or has expired", 409);
+  if (code === "P0004" && message.includes("BOOKING_SUBSCRIPTION_QUOTA_EXHAUSTED")) return new AppError("CONFLICT", "Subscription has no remaining sessions", 409);
+  if (code === "P0005" && message.includes("BOOKING_SUBSCRIPTION_OWNERSHIP")) return new AppError("CONFLICT", "Subscription does not belong to the member", 409);
+  if (code === "P0006" && message.includes("BOOKING_CAPACITY_REDUCTION")) return new AppError("CONFLICT", "Capacity cannot be lower than existing bookings", 409);
   return null;
 }
 
@@ -66,7 +77,7 @@ export class BookingService {
       if (count >= schedule.capacity) throw new AppError("CONFLICT", "Schedule is full", 409);
       if (await tx.findActiveByMemberSchedule(member.id, schedule.id, true)) throw new AppError("CONFLICT", "Member already has an active booking for this schedule", 409);
       const created = await tx.insertBooking({ memberId: member.id, scheduleId: schedule.id, subscriptionId: subscription.id });
-      await tx.updateSubscriptionUsed(subscription.id, subscription.usedSessions + 1);
+       if (!tx.databaseEnforcesBookingInvariants) await tx.updateSubscriptionUsed(subscription.id, subscription.usedSessions + 1);
       await tx.updateScheduleStatus(schedule.id, count + 1 >= schedule.capacity ? "full" : "available");
       return serialize(created);
       });
@@ -90,7 +101,8 @@ export class BookingService {
   }
 
   async cancel(user: AuthUser, id: string) {
-    return this.repository.transaction(async (tx) => {
+    try {
+      return await this.repository.transaction(async (tx) => {
       // Read the key first, then acquire locks in the same schedule ->
       // subscription -> booking order used by creation. Re-check the booking
       // after locking it so cancellation cannot race another booking write.
@@ -107,10 +119,15 @@ export class BookingService {
       if (current.status !== "booked") throw new AppError("CONFLICT", `Cannot cancel a ${current.status} booking`, 409);
       if (!subscription) throw new AppError("NOT_FOUND", "Subscription not found", 404);
       const updated = await tx.updateBooking(id, { status: "cancelled", cancelledAt: new Date() });
-      await tx.updateSubscriptionUsed(subscription.id, Math.max(0, subscription.usedSessions - 1));
+       if (!tx.databaseEnforcesBookingInvariants) await tx.updateSubscriptionUsed(subscription.id, Math.max(0, subscription.usedSessions - 1));
       if (schedule && schedule.status === "full") await tx.updateScheduleStatus(schedule.id, "available");
-      return serialize(updated!);
-    });
+        return serialize(updated!);
+      });
+    } catch (error) {
+      const conflict = bookingDuplicateConflict(error);
+      if (conflict) throw conflict;
+      throw error;
+    }
   }
 }
 

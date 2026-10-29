@@ -11,6 +11,7 @@ type DbExecutor = any;
 function booking(row: typeof bookings.$inferSelect): BookingRecord { return row; }
 
 export class DrizzleBookingRepository implements BookingRepository {
+  readonly databaseEnforcesBookingInvariants = true;
   constructor(private readonly db: DbExecutor, private readonly inTransaction = false) {}
 
   async transaction<T>(fn: (tx: BookingRepository) => Promise<T>): Promise<T> {
@@ -96,6 +97,7 @@ function cloneSubscription(item: SubscriptionRecord): SubscriptionRecord { retur
 
 /** In-memory implementation intentionally serializes the whole transaction. */
 export class InMemoryBookingRepository implements BookingRepository {
+  readonly databaseEnforcesBookingInvariants = false;
   readonly bookings: BookingRecord[];
   private transactionTail: Promise<void> = Promise.resolve();
 

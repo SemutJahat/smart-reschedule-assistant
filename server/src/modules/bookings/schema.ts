@@ -33,6 +33,8 @@ export interface BookingPatch {
 }
 
 export interface BookingRepository {
+  /** PostgreSQL trigger-backed repositories apply quota/status side effects. */
+  readonly databaseEnforcesBookingInvariants?: boolean;
   transaction<T>(fn: (tx: BookingRepository) => Promise<T>): Promise<T>;
   findSchedule(id: string, lock?: boolean): Promise<ScheduleRecord | null>;
   updateScheduleStatus(id: string, status: ScheduleRecord["status"]): Promise<ScheduleRecord | null>;
