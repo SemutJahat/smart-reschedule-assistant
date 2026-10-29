@@ -41,7 +41,7 @@ export interface ChatServiceContractDependencies {
   eligibility: { subscriptionStatus: SubscriptionRecord["status"]; subscriptionExpiresAt: Date; remainingQuota: number };
   booking: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status">;
   sourceSchedule: Pick<ScheduleRecord, "id" | "serviceId">;
-  candidates: Array<Pick<ScheduleRecord, "id" | "serviceId" | "capacity"> & { booked: number }>;
+  candidates: Array<Pick<ScheduleRecord, "id" | "serviceId" | "capacity"> & { booked: number; status?: ScheduleRecord["status"] }>;
 }
 
 export interface SendMessageInput {
@@ -194,7 +194,7 @@ export class ChatService {
       } as unknown as BookingRepository;
       const contractPayment = { findSubscription: async () => this.subscriptionFromContract(dependencies) } as unknown as PaymentRepository;
       this.dependencies = {
-        auth: { findMemberByUserId: async () => dependencies.member } as unknown as AuthRepository,
+        auth: { findMemberByUserId: async (userId: string) => userId === dependencies.member.userId ? dependencies.member : null } as unknown as AuthRepository,
         catalog: { findSchedule: async (id: string) => id === dependencies.sourceSchedule.id ? this.scheduleFromPartial(dependencies.sourceSchedule) : null, listSchedules: async () => dependencies.candidates.map((item) => this.scheduleFromPartial(item)), countBooked: async (id: string) => dependencies.candidates.find((item) => item.id === id)?.booked ?? 0 } as unknown as CatalogRepository,
         booking: contractBooking,
         payment: contractPayment,

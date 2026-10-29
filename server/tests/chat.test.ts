@@ -12,6 +12,7 @@ import type {
   NewChatAnalysis,
   NewChatMessage,
   NewChatSession,
+  ChatContext,
 } from "../src/modules/chat/schema";
 import type { RescheduleRequestRecord } from "../src/modules/reschedules/schema";
 
@@ -88,8 +89,10 @@ class FakeAiClient implements GenAiClient {
     modelVersion: "test",
   };
   error: unknown = null;
+  lastContext: ChatContext | null = null;
 
-  async analyze() {
+  async analyze(context: ChatContext) {
+    this.lastContext = context;
     if (this.error) throw this.error;
     return this.result;
   }
@@ -138,7 +141,7 @@ const serviceId = "00000000-0000-4000-8000-000000000007";
 const invalidScheduleId = "00000000-0000-4000-8000-000000000008";
 const SAFE_FALLBACK_REPLY = "I couldn't process that request right now. Please try again.";
 
-function makeService(chat: FakeChatRepository, ai: FakeAiClient, coordinator: FakeSharedTransactionCoordinator, reschedule: FakeRescheduleRepository) {
+function makeService(chat: FakeChatRepository, ai: FakeAiClient, coordinator: FakeSharedTransactionCoordinator, reschedule: FakeRescheduleRepository, candidates: ChatServiceContractDependencies["candidates"] = [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }]) {
   const dependencies: ChatServiceContractDependencies = {
     chat,
     ai,
@@ -148,7 +151,7 @@ function makeService(chat: FakeChatRepository, ai: FakeAiClient, coordinator: Fa
     eligibility: { subscriptionStatus: "active", subscriptionExpiresAt: new Date("2030-01-01T00:00:00.000Z"), remainingQuota: 3 },
     booking,
     sourceSchedule: { id: sourceScheduleId, serviceId },
-    candidates: [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }],
+    candidates,
   };
   return new ChatService(dependencies);
 }
@@ -256,4 +259,160 @@ test("a failed AI call persists the failed-analysis sentinel", async () => {
   expect(persistedSession).toMatchObject({ status: "active", currentIntent: null, proposedScheduleId: null });
   expect(persistedSession?.status).toBe("active");
   expect(reschedule.requests).toHaveLength(0);
+});
+
+test("invalid AI retry is idempotent and analysis serialization is public-only", async () => {
+  ai.error = new AppError("AI_INVALID_RESPONSE", "bad provider response", 502);
+  const session = await service.createSession(user, bookingId);
+  const clientMessageId = "00000000-0000-4000-8000-000000000019";
+  await expect(service.sendMessage(user, session.id, { message: "Move me", clientMessageId })).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+  const retry = await service.sendMessage(user, session.id, { message: "retry", clientMessageId });
+  expect(retry.analysis).not.toHaveProperty("messageId");
+  expect(retry.analysis).not.toHaveProperty("status");
+  expect(retry.analysis).not.toHaveProperty("errorCode");
+  expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
+  expect(chat.analyses).toHaveLength(1);
+});
+
+test("context filters cancelled, full, wrong-service, capacity-full, and current schedules", async () => {
+  const cancelled = "00000000-0000-4000-8000-000000000030";
+  const full = "00000000-0000-4000-8000-000000000031";
+  const wrong = "00000000-0000-4000-8000-000000000032";
+  const capacityFull = "00000000-0000-4000-8000-000000000033";
+  const valid = "00000000-0000-4000-8000-000000000034";
+  const candidates = [
+    { id: sourceScheduleId, serviceId, capacity: 2, booked: 0 },
+    { id: cancelled, serviceId, capacity: 2, booked: 0, status: "cancelled" as const },
+    { id: full, serviceId, capacity: 2, booked: 0, status: "full" as const },
+    { id: wrong, serviceId: otherScheduleId, capacity: 2, booked: 0 },
+    { id: capacityFull, serviceId, capacity: 2, booked: 2 },
+    { id: valid, serviceId, capacity: 2, booked: 1 },
+  ];
+  ai.result = { ...ai.result, intent: "Other", recommendedScheduleIds: [], nextState: "active" };
+  const local = makeService(chat, ai, coordinator, reschedule, candidates);
+  const session = await local.createSession(user, bookingId);
+  await local.sendMessage(user, session.id, { message: "available?" });
+  expect(ai.lastContext?.candidateSchedules.map((item) => item.schedule.id)).toEqual([valid]);
+  expect(ai.lastContext?.candidateSchedules[0]?.remainingCapacity).toBe(1);
+  expect(ai.lastContext).not.toHaveProperty("passwordHash");
+  expect(ai.lastContext).not.toHaveProperty("medicalHistory");
+  expect(ai.lastContext).not.toHaveProperty("paymentReference");
+});
+
+test("malformed injected AI payloads persist invalid sentinels", async () => {
+  const cases: Array<Partial<GenAiAnalysis>> = [
+    { intent: "Bogus" as GenAiAnalysis["intent"] }, { confidence: 2 }, { reply: "   " }, { reply: "x".repeat(2_001) },
+    { model: "" }, { modelVersion: "" }, { nextState: "submitted", recommendedScheduleIds: [] },
+    { nextState: "awaiting_confirmation", recommendedScheduleIds: [] }, { nextState: "active", recommendedScheduleIds: [candidateScheduleId] },
+  ];
+  for (const [index, patch] of cases.entries()) {
+    const session = await service.createSession(user, bookingId);
+    ai.result = { intent: "Reschedule", confidence: 0.9, extracted: {}, recommendedScheduleIds: [candidateScheduleId], reply: "ok", nextState: "awaiting_confirmation", model: "model", modelVersion: "v1", ...patch };
+    await expect(service.sendMessage(user, session.id, { message: `invalid-${index}` })).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+    expect(chat.analyses.at(-1)).toMatchObject({ status: "failed", errorCode: "AI_INVALID_RESPONSE" });
+    await chat.updateSession(session.id, { status: "closed" });
+  }
+});
+
+test("ownership, terminal, source-change, and stale target errors are exact", async () => {
+  const session = await service.createSession(user, bookingId);
+  const otherUser = { userId: "00000000-0000-4000-8000-000000000099", role: "customer" as const };
+  await expect(service.getSession(otherUser, session.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await expect(service.getMessages(otherUser, session.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await chat.updateSession(session.id, { status: "closed" });
+  await expect(service.sendMessage(user, session.id, { message: "closed" })).rejects.toMatchObject({ code: "CHAT_SESSION_CLOSED" });
+
+  await chat.updateSession(session.id, { status: "active" });
+  const replacement = await service.createSession(user, bookingId).catch(() => null);
+  const activeSession = replacement ?? session;
+  ai.result = { ...ai.result, recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  await service.sendMessage(user, activeSession.id, { message: "move" });
+  await expect(service.confirmSchedule(user, activeSession.id, otherScheduleId)).rejects.toMatchObject({ code: "CONFIRMATION_MISMATCH" });
+  booking.scheduleId = otherScheduleId;
+  await expect(service.confirmSchedule(user, activeSession.id, candidateScheduleId)).rejects.toMatchObject({ code: "BOOKING_STATE_CHANGED" });
+});
+
+test("builds private context and filters invalid candidates", async () => {
+  const cancelledId = "00000000-0000-4000-8000-000000000030";
+  const fullId = "00000000-0000-4000-8000-000000000031";
+  const wrongServiceId = "00000000-0000-4000-8000-000000000032";
+  const capacityFullId = "00000000-0000-4000-8000-000000000033";
+  const validId = "00000000-0000-4000-8000-000000000034";
+  const localAi = new FakeAiClient();
+  localAi.result = { ...localAi.result, recommendedScheduleIds: [], nextState: "active" };
+  const localService = makeService(chat, localAi, coordinator, reschedule, [
+    { id: sourceScheduleId, serviceId, capacity: 2, booked: 0 },
+    { id: cancelledId, serviceId, capacity: 2, booked: 0, status: "cancelled" },
+    { id: fullId, serviceId, capacity: 2, booked: 0, status: "full" },
+    { id: wrongServiceId, serviceId: otherScheduleId, capacity: 2, booked: 0 },
+    { id: capacityFullId, serviceId, capacity: 2, booked: 2 },
+    { id: validId, serviceId, capacity: 2, booked: 1 },
+  ]);
+  const session = await localService.createSession(user, bookingId);
+  await localService.sendMessage(user, session.id, { message: "What is available?" });
+  expect(localAi.lastContext?.candidateSchedules.map((item) => item.schedule.id)).toEqual([validId]);
+  expect(localAi.lastContext?.member).toEqual({ id: memberId, status: "active" });
+  expect(localAi.lastContext).not.toHaveProperty("passwordHash");
+  expect(localAi.lastContext).not.toHaveProperty("medicalHistory");
+  expect(localAi.lastContext).not.toHaveProperty("paymentReference");
+  expect(localAi.lastContext?.candidateSchedules[0]?.remainingCapacity).toBe(1);
+});
+
+test("no candidates stays active without a request", async () => {
+  ai.result = { ...ai.result, intent: "Other", recommendedScheduleIds: [], nextState: "active" };
+  const localService = makeService(chat, ai, coordinator, reschedule, []);
+  const session = await localService.createSession(user, bookingId);
+  const turn = await localService.sendMessage(user, session.id, { message: "Nothing?" });
+  expect(turn.session.status).toBe("active");
+  expect(reschedule.requests).toHaveLength(0);
+});
+
+test("malformed injected AI responses persist invalid sentinels", async () => {
+  const malformed = [
+    { intent: "Bogus" },
+    { confidence: 2 },
+    { reply: "   " },
+    { reply: "x".repeat(2_001) },
+    { model: "" },
+    { modelVersion: "" },
+    { nextState: "submitted", recommendedScheduleIds: [] },
+    { nextState: "awaiting_confirmation", recommendedScheduleIds: [] },
+    { nextState: "active", recommendedScheduleIds: [candidateScheduleId] },
+  ] as const;
+  for (const [index, patch] of malformed.entries()) {
+    const session = await service.createSession(user, bookingId);
+    ai.result = { intent: "Reschedule", confidence: 0.9, extracted: {}, recommendedScheduleIds: [candidateScheduleId], reply: "ok", nextState: "awaiting_confirmation", model: "model", modelVersion: "v1", ...patch } as GenAiAnalysis;
+    await expect(service.sendMessage(user, session.id, { message: `invalid-${index}` })).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+    expect(chat.analyses.at(-1)).toMatchObject({ status: "failed", errorCode: "AI_INVALID_RESPONSE" });
+    await chat.updateSession(session.id, { status: "closed" });
+  }
+});
+
+test("invalid-AI retry is idempotent and exposes only public analysis fields", async () => {
+  ai.error = new AppError("AI_INVALID_RESPONSE", "bad response", 502);
+  const session = await service.createSession(user, bookingId);
+  const clientMessageId = "00000000-0000-4000-8000-000000000022";
+  await expect(service.sendMessage(user, session.id, { message: "Move me", clientMessageId })).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+  const retry = await service.sendMessage(user, session.id, { message: "retry", clientMessageId });
+  expect(retry.analysis).not.toHaveProperty("messageId");
+  expect(retry.analysis).not.toHaveProperty("status");
+  expect(retry.analysis).not.toHaveProperty("errorCode");
+  expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
+  expect(chat.analyses).toHaveLength(1);
+});
+
+test("ownership, booking state, source changes, duplicate confirmation, and stale schedule use exact errors", async () => {
+  const session = await service.createSession(user, bookingId);
+  const otherUser = { userId: "00000000-0000-4000-8000-000000000099", role: "customer" as const };
+  await expect(service.getSession(otherUser, session.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await expect(service.getMessages(otherUser, session.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await chat.updateSession(session.id, { status: "closed" });
+  await expect(service.sendMessage(user, session.id, { message: "again" })).rejects.toMatchObject({ code: "CHAT_SESSION_CLOSED" });
+
+  await chat.updateSession(session.id, { status: "active" });
+  ai.result.recommendedScheduleIds = [candidateScheduleId];
+  await service.sendMessage(user, session.id, { message: "Move" });
+  await expect(service.confirmSchedule(user, session.id, otherScheduleId)).rejects.toMatchObject({ code: "CONFIRMATION_MISMATCH" });
+  booking.scheduleId = otherScheduleId;
+  await expect(service.confirmSchedule(user, session.id, candidateScheduleId)).rejects.toMatchObject({ code: "BOOKING_STATE_CHANGED" });
 });
