@@ -2099,64 +2099,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "Customer cancel booking",
-          "request": {
-            "method": "PATCH",
-            "description": "Customer cancels the booking after the reschedule flow completes. Expected: HTTP 200 with cancelled status. The endpoint has no request fields; an empty JSON object is sent explicitly.",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "bookings",
-                "{{bookingId}}",
-                "cancel"
-              ]
-            },
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{customerAccessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "const body = pm.response.json();",
-                  "pm.test(\"cancelled booking id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"bookingId\")); });",
-                  "pm.test(\"booking status is cancelled\", function () { pm.expect(body.status).to.eql(\"cancelled\"); });",
-                  "pm.test(\"cancelled timestamp exists\", function () { pm.expect(body.cancelledAt).to.not.be.null; });"
-                ]
-              }
-            }
-          ]
         }
       ]
     },
@@ -2371,6 +2313,64 @@
                   "pm.test(\"reviewer exists\", function () { pm.expect(body.reviewedBy).to.not.be.undefined; });",
                   "pm.test(\"review timestamp exists\", function () { pm.expect(body.reviewedAt).to.not.be.undefined; });",
                   "pm.expect(pm.response.json().status).to.eql(\"approved\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cancel booking",
+          "request": {
+            "method": "PATCH",
+            "description": "Customer cancels the booking after the reschedule flow completes. Expected: HTTP 200 with cancelled status. The endpoint has no request fields; an empty JSON object is sent explicitly.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"cancelled booking id exists\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"bookingId\")); });",
+                  "pm.test(\"booking status is cancelled\", function () { pm.expect(body.status).to.eql(\"cancelled\"); });",
+                  "pm.test(\"cancelled timestamp exists\", function () { pm.expect(body.cancelledAt).to.not.be.null; });"
                 ]
               }
             }
