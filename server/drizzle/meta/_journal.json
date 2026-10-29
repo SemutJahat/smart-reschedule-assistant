@@ -22,6 +22,13 @@
       "when": 1793226415329,
       "tag": "0002_legacy_milky_bridge",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793236015852,
+      "tag": "0003_equal_timeslip",
+      "breakpoints": true
     }
   ]
 }

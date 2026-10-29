@@ -174,7 +174,7 @@ export const packages = pgTable(
     ...timestamps,
   },
   (table) => [
-    check("packages_price_nonnegative_chk", sql`${table.price} >= 0`),
+    check("packages_price_positive_chk", sql`${table.price} > 0`),
     check("packages_sessions_positive_chk", sql`${table.totalSessions} > 0`),
     check("packages_validity_positive_chk", sql`${table.validityDays} > 0`),
   ],
