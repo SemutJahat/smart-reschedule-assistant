@@ -130,3 +130,9 @@ test("the coordinator restores pre-existing records when a shared transaction fa
   expect(await reschedule.findRequest(existingRequest.id)).toEqual(existingRequest);
   expect(await chat.findAnalysisByMessageId(existingMessage.id)).toEqual(existingAnalysis);
 });
+
+test("source schedule migration backfills legacy sessions and closes unreconstructable active sessions", async () => {
+  const sql = await Bun.file("drizzle/0009_broad_scream.sql").text();
+  expect(sql).toContain("SET \"source_schedule_id\" = bookings.\"schedule_id\"");
+  expect(sql).toContain("WHERE \"source_schedule_id\" IS NULL AND \"status\" IN ('active', 'awaiting_confirmation')");
+});

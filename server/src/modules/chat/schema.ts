@@ -39,7 +39,7 @@ export interface ChatSessionRecord {
   id: string;
   memberId: string;
   bookingId: string;
-  sourceScheduleId?: string | null;
+  sourceScheduleId: string | null;
   status: ChatSessionStatus;
   currentIntent: ChatIntent | null;
   proposedScheduleId: string | null;
@@ -81,23 +81,45 @@ export interface ChatMessageAnalysisRecord {
   createdAt: Date;
 }
 
+export interface ChatScheduleView {
+  id: string;
+  title: string;
+  serviceId: string;
+  startsAt: Date;
+  endsAt: Date;
+  coachId: string;
+}
+
 export interface ChatScheduleCandidate {
-  schedule: ScheduleRecord;
+  schedule: ChatScheduleView;
   remainingCapacity: number;
+}
+
+export interface ChatSessionContext {
+  id: string;
+  status: ChatSessionStatus;
+  currentIntent: ChatIntent | null;
+  proposedScheduleId: string | null;
+}
+
+export interface ChatMessageContext {
+  role: ChatMessageRole;
+  content: string;
+  sequence: number;
 }
 
 /** The deliberately narrow, backend-curated context sent to the AI client. */
 export interface ChatContext {
-  session: ChatSessionRecord;
-  messages: ChatMessageRecord[];
+  session: ChatSessionContext;
+  messages: ChatMessageContext[];
   member: Pick<MemberRecord, "id" | "status">;
   eligibility: {
     subscriptionStatus: SubscriptionStatus;
     subscriptionExpiresAt: Date;
     remainingQuota: number;
   };
-  booking: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status">;
-  sourceSchedule: ScheduleRecord;
+  booking: Pick<BookingRecord, "id" | "scheduleId" | "status">;
+  sourceSchedule: ChatScheduleView;
   candidateSchedules: ChatScheduleCandidate[];
   policy: {
     policyVersion: string;

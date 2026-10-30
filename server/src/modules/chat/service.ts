@@ -39,6 +39,7 @@ export interface ChatServiceContractDependencies {
   reschedule: { insertRequest(input: { bookingId: string; memberId: string; chatSessionId: string | null; fromScheduleId: string; toScheduleId: string; customerMessage: string }): Promise<RescheduleRequestRecord> };
   member: Pick<MemberRecord, "id" | "userId" | "status">;
   members?: Array<Pick<MemberRecord, "id" | "userId" | "status">>;
+  activeRequests?: RescheduleRequestRecord[];
   eligibility: { subscriptionStatus: SubscriptionRecord["status"]; subscriptionExpiresAt: Date; remainingQuota: number };
   booking: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status">;
   sourceSchedule: Pick<ScheduleRecord, "id" | "serviceId">;
@@ -50,13 +51,22 @@ export interface SendMessageInput {
   clientMessageId?: string;
 }
 
-export interface SerializedChatSession extends Omit<ChatSessionRecord, "confirmedAt" | "createdAt" | "updatedAt"> {
+export interface SerializedChatSession {
+  id: string;
+  bookingId: string;
+  status: ChatSessionStatus;
+  currentIntent: ChatIntent | null;
+  proposedScheduleId: string | null;
   confirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SerializedChatMessage extends Omit<ChatMessageRecord, "createdAt"> {
+export interface SerializedChatMessage {
+  id: string;
+  role: ChatMessageRecord["role"];
+  content: string;
+  sequence: number;
   createdAt: string;
 }
 
@@ -84,15 +94,24 @@ export interface ConfirmationResult {
   booking: SerializedBooking;
 }
 
-export interface SerializedBooking extends Omit<BookingRecord, "bookedAt" | "cancelledAt" | "createdAt" | "updatedAt"> {
+export interface SerializedBooking {
+  id: string;
+  scheduleId: string;
+  status: BookingRecord["status"];
   bookedAt: string;
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SerializedRescheduleRequest extends Omit<RescheduleRequestRecord, "reviewedAt" | "createdAt" | "updatedAt"> {
-  reviewedAt: string | null;
+export interface SerializedRescheduleRequest {
+  id: string;
+  bookingId: string;
+  chatSessionId: string | null;
+  fromScheduleId: string;
+  toScheduleId: string;
+  customerMessage: string | null;
+  status: RescheduleRequestRecord["status"];
   createdAt: string;
   updatedAt: string;
 }
@@ -106,7 +125,11 @@ function isAppError(error: unknown): error is AppError {
 
 function serializeSession(item: ChatSessionRecord): SerializedChatSession {
   return {
-    ...item,
+    id: item.id,
+    bookingId: item.bookingId,
+    status: item.status,
+    currentIntent: item.currentIntent,
+    proposedScheduleId: item.proposedScheduleId,
     confirmedAt: item.confirmedAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
@@ -114,7 +137,7 @@ function serializeSession(item: ChatSessionRecord): SerializedChatSession {
 }
 
 function serializeMessage(item: ChatMessageRecord): SerializedChatMessage {
-  return { ...item, createdAt: item.createdAt.toISOString() };
+  return { id: item.id, role: item.role, content: item.content, sequence: item.sequence, createdAt: item.createdAt.toISOString() };
 }
 
 function serializeAnalysis(item: ChatMessageAnalysisRecord): SerializedChatAnalysis {
@@ -123,7 +146,9 @@ function serializeAnalysis(item: ChatMessageAnalysisRecord): SerializedChatAnaly
 
 function serializeBooking(item: BookingRecord): SerializedBooking {
   return {
-    ...item,
+    id: item.id,
+    scheduleId: item.scheduleId,
+    status: item.status,
     bookedAt: item.bookedAt.toISOString(),
     cancelledAt: item.cancelledAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
@@ -133,8 +158,13 @@ function serializeBooking(item: BookingRecord): SerializedBooking {
 
 function serializeRequest(item: RescheduleRequestRecord): SerializedRescheduleRequest {
   return {
-    ...item,
-    reviewedAt: item.reviewedAt?.toISOString() ?? null,
+    id: item.id,
+    bookingId: item.bookingId,
+    chatSessionId: item.chatSessionId,
+    fromScheduleId: item.fromScheduleId,
+    toScheduleId: item.toScheduleId,
+    customerMessage: item.customerMessage,
+    status: item.status,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -151,6 +181,9 @@ function internal(): AppError { return new AppError("INTERNAL_SERVER_ERROR", "Un
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function isIntent(value: unknown): value is ChatIntent { return typeof value === "string" && (CHAT_INTENTS as readonly string[]).includes(value); }
 function isNextState(value: unknown): value is ChatAnalysisNextState { return value === "active" || value === "awaiting_confirmation" || value === "submitted"; }
+function scheduleView(schedule: ScheduleRecord) {
+  return { id: schedule.id, title: schedule.title, serviceId: schedule.serviceId, startsAt: schedule.startsAt, endsAt: schedule.endsAt, coachId: schedule.coachId };
+}
 function validateAnalysis(value: unknown, session: ChatSessionRecord, candidateIds: Set<string>): GenAiAnalysis {
   if (!isRecord(value)) throw invalidResponse();
   const keys = ["intent", "confidence", "extracted", "recommendedScheduleIds", "reply", "nextState", "model", "modelVersion"];
@@ -170,12 +203,16 @@ function mapPersistenceError(error: unknown): AppError | null {
   return null;
 }
 
-function activeSubscription(subscription: SubscriptionRecord | null, memberId: string, now = new Date()): subscription is SubscriptionRecord {
-  return !!subscription && subscription.memberId === memberId && subscription.status === "active" && subscription.expiresAt > now && subscription.usedSessions < subscription.totalSessions;
+function publicFailureCode(error: unknown): "AI_INVALID_RESPONSE" | "AI_SERVICE_UNAVAILABLE" {
+  return isAppError(error) && error.code === "AI_INVALID_RESPONSE" ? "AI_INVALID_RESPONSE" : "AI_SERVICE_UNAVAILABLE";
 }
 
-function cloneAnalysisForTurn(analysis: ChatMessageAnalysisRecord | null): ChatMessageAnalysisRecord | null {
-  return analysis ? { ...analysis, extractedData: structuredClone(analysis.extractedData), recommendedScheduleIds: [...analysis.recommendedScheduleIds] } : null;
+function isTerminal(session: ChatSessionRecord): boolean {
+  return session.status === "submitted" || session.status === "closed";
+}
+
+function activeSubscription(subscription: SubscriptionRecord | null, memberId: string, now = new Date()): subscription is SubscriptionRecord {
+  return !!subscription && subscription.memberId === memberId && subscription.status === "active" && subscription.expiresAt > now && subscription.usedSessions < subscription.totalSessions;
 }
 
 export class ChatService {
@@ -190,7 +227,11 @@ export class ChatService {
       this.contract = dependencies;
       const contractBooking = {
         findBooking: async () => this.bookingFromPartial(dependencies.booking),
-        findSchedule: async (id: string) => id === dependencies.sourceSchedule.id ? this.scheduleFromPartial(dependencies.sourceSchedule) : this.scheduleFromPartial(dependencies.candidates.find((item) => item.id === id) ?? { id, serviceId: dependencies.sourceSchedule.serviceId }),
+        findSchedule: async (id: string) => {
+          if (id === dependencies.sourceSchedule.id) return this.scheduleFromPartial(dependencies.sourceSchedule);
+          const candidate = dependencies.candidates.find((item) => item.id === id);
+          return candidate ? this.scheduleFromPartial(candidate) : null;
+        },
         countBooked: async (id: string) => dependencies.candidates.find((item) => item.id === id)?.booked ?? 0,
       } as unknown as BookingRepository;
       const contractPayment = { findSubscription: async () => this.subscriptionFromContract(dependencies) } as unknown as PaymentRepository;
@@ -199,7 +240,7 @@ export class ChatService {
         catalog: { findSchedule: async (id: string) => id === dependencies.sourceSchedule.id ? this.scheduleFromPartial(dependencies.sourceSchedule) : null, listSchedules: async () => dependencies.candidates.map((item) => this.scheduleFromPartial(item)), countBooked: async (id: string) => dependencies.candidates.find((item) => item.id === id)?.booked ?? 0 } as unknown as CatalogRepository,
         booking: contractBooking,
         payment: contractPayment,
-        reschedule: { listRequests: async () => [] } as unknown as RescheduleRepository,
+        reschedule: { listRequests: async () => dependencies.activeRequests ?? [] } as unknown as RescheduleRepository,
         chat: dependencies.chat,
         coordinator: {
           transaction: async <T>(fn: (tx: ChatRescheduleUnitOfWork) => Promise<T>) => dependencies.coordinator.transaction((legacyTx) => fn({
@@ -245,15 +286,22 @@ export class ChatService {
 
   async createSession(user: AuthUser, bookingId: string): Promise<SerializedChatSession> {
     const member = await this.memberFor(user);
-    const booking = await this.dependencies.booking.findBooking(bookingId);
-    if (!booking) throw notFound("Booking not found");
-    if (booking.memberId !== member.id) throw forbidden("Booking does not belong to the member");
-    if (booking.status !== "booked") throw coded("BOOKING_STATE_CHANGED", "Only booked reservations can start a chat session");
-    const requests = await this.dependencies.reschedule.listRequests({ memberId: member.id });
-    if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");
-    if (await this.dependencies.chat.findActiveSession(booking.id)) throw conflict("An active chat session already exists");
-    const session = await this.dependencies.chat.insertSession({ memberId: member.id, bookingId: booking.id, sourceScheduleId: booking.scheduleId, currentIntent: null, status: "active" });
-    return serializeSession(session);
+    try {
+      const session = await this.dependencies.coordinator.transaction(async (tx) => {
+        const booking = await tx.booking.findBooking(bookingId, true);
+        if (!booking) throw notFound("Booking not found");
+        if (booking.memberId !== member.id) throw forbidden("Booking does not belong to the member");
+        if (booking.status !== "booked") throw coded("BOOKING_STATE_CHANGED", "Only booked reservations can start a chat session");
+        if (!await tx.booking.findSchedule(booking.scheduleId, true)) throw coded("BOOKING_STATE_CHANGED", "Booking source schedule no longer exists");
+        const requests = "listRequests" in tx.reschedule ? await tx.reschedule.listRequests({ memberId: member.id }) : [];
+        if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");
+        if (await tx.chat.findActiveSession(booking.id)) throw conflict("An active chat session already exists");
+        return tx.chat.insertSession({ memberId: member.id, bookingId: booking.id, sourceScheduleId: booking.scheduleId, currentIntent: null, status: "active" });
+      });
+      return serializeSession(session);
+    } catch (error) {
+      throw mapPersistenceError(error) ?? error;
+    }
   }
 
   private async eligibility(memberId: string, booking: BookingRecord): Promise<SubscriptionRecord | null> {
@@ -275,17 +323,17 @@ export class ChatService {
       candidateSchedules.push({ schedule, remainingCapacity: Math.max(0, schedule.capacity - booked) });
     }
     return {
-      session,
-      messages: await this.dependencies.chat.listMessages(session.id),
+      session: { id: session.id, status: session.status, currentIntent: session.currentIntent, proposedScheduleId: session.proposedScheduleId },
+      messages: (await this.dependencies.chat.listMessages(session.id)).map((message) => ({ role: message.role, content: message.content, sequence: message.sequence })),
       member: { id: member.id, status: member.status },
       eligibility: {
         subscriptionStatus: subscription?.status ?? "cancelled",
         subscriptionExpiresAt: subscription?.expiresAt ?? new Date(0),
         remainingQuota: subscription ? Math.max(0, subscription.totalSessions - subscription.usedSessions) : 0,
       },
-      booking: { id: booking.id, memberId: booking.memberId, scheduleId: booking.scheduleId, status: booking.status },
-      sourceSchedule,
-      candidateSchedules,
+      booking: { id: booking.id, scheduleId: booking.scheduleId, status: booking.status },
+      sourceSchedule: scheduleView(sourceSchedule),
+      candidateSchedules: candidateSchedules.map((candidate) => ({ schedule: scheduleView(candidate.schedule), remainingCapacity: candidate.remainingCapacity })),
       policy: { policyVersion: this.dependencies.policyVersion ?? POLICY_VERSION, requiresExplicitConfirmation: true },
     };
   }
@@ -294,15 +342,34 @@ export class ChatService {
     const analysis = await this.dependencies.chat.findAnalysisByMessageId(userMessage.id);
     if (!analysis) return null;
     const messages = await this.dependencies.chat.listMessages(sessionId);
-    const assistant = messages.find((item) => item.role === "assistant" && item.sequence > userMessage.sequence);
+    let assistant = messages.find((item) => item.role === "assistant" && item.sequence > userMessage.sequence);
+    if (!assistant) {
+      assistant = await this.dependencies.chat.transaction(async (tx) => tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "assistant", content: analysis.reply }));
+    }
     const session = await this.dependencies.chat.findSession(sessionId);
-    if (!assistant || !session) return null;
+    if (!session) return null;
     return { session: serializeSession(session), message: serializeMessage(userMessage), assistantMessage: serializeMessage(assistant), analysis: serializeAnalysis(analysis) };
+  }
+
+  private async persistFailure(sessionId: string, messageId: string, errorCode: "AI_INVALID_RESPONSE" | "AI_SERVICE_UNAVAILABLE"): Promise<void> {
+    try {
+      await this.dependencies.coordinator.transaction(async (unit) => {
+        const current = await unit.chat.findSession(sessionId, true);
+        if (!current || isTerminal(current)) throw coded("CHAT_SESSION_CLOSED", "Chat session is no longer active");
+        if (await unit.chat.findAnalysisByMessageId(messageId)) return;
+        const fallback = await unit.chat.insertAnalysis({ messageId, status: "failed", intent: "Other", confidence: 0, extractedData: {}, recommendedScheduleIds: [], reply: SAFE_FALLBACK_REPLY, nextState: "active", model: "unavailable", modelVersion: "unavailable", errorCode });
+        void fallback;
+        await unit.chat.insertMessage({ sessionId, sequence: await unit.chat.nextMessageSequence(sessionId), role: "assistant", content: SAFE_FALLBACK_REPLY });
+        if (!await unit.chat.updateSession(sessionId, { status: "active", currentIntent: null, proposedScheduleId: null })) throw internal();
+      });
+    } catch (error) {
+      throw mapPersistenceError(error) ?? (isAppError(error) ? error : internal());
+    }
   }
 
   async sendMessage(user: AuthUser, sessionId: string, input: SendMessageInput): Promise<ChatTurn> {
     const { member, session: initialSession } = await this.ownSession(user, sessionId);
-    if (initialSession.status === "submitted" || initialSession.status === "closed") throw coded("CHAT_SESSION_CLOSED", "Chat session is no longer active");
+    if (isTerminal(initialSession)) throw coded("CHAT_SESSION_CLOSED", "Chat session is no longer active");
     if (input.clientMessageId) {
       const existing = await this.dependencies.chat.findMessageByClientId(sessionId, input.clientMessageId);
       if (existing) {
@@ -311,41 +378,48 @@ export class ChatService {
       }
     }
 
-    const message = await this.dependencies.chat.transaction(async (tx) => tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "user", content: input.message, clientMessageId: input.clientMessageId ?? null }));
+    let message: ChatMessageRecord;
+    if (input.clientMessageId) {
+      const existing = await this.dependencies.chat.findMessageByClientId(sessionId, input.clientMessageId);
+      if (existing) message = existing;
+      else {
+        try {
+          message = await this.dependencies.chat.transaction(async (tx) => tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "user", content: input.message, clientMessageId: input.clientMessageId }));
+        } catch (error) {
+          const raced = await this.dependencies.chat.findMessageByClientId(sessionId, input.clientMessageId);
+          if (!raced) throw mapPersistenceError(error) ?? internal();
+          message = raced;
+        }
+      }
+    } else {
+      message = await this.dependencies.chat.transaction(async (tx) => tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "user", content: input.message, clientMessageId: null }));
+    }
     const booking = await this.dependencies.booking.findBooking(initialSession.bookingId);
     if (!booking || booking.memberId !== member.id) throw booking ? forbidden("Booking does not belong to the member") : notFound("Booking not found");
-    let context: ChatContext;
-    try {
-      context = await this.buildContext(member, initialSession, booking);
-    } catch (error) {
-      throw error;
-    }
-
     let analysis: GenAiAnalysis;
     try {
+      const context = await this.buildContext(member, initialSession, booking);
+      if (context.candidateSchedules.length === 0) throw coded("NO_AVAILABLE_SCHEDULE", "No available schedule matches the booking");
       analysis = validateAnalysis(await this.dependencies.ai.analyze(context), initialSession, new Set(context.candidateSchedules.map((candidate) => candidate.schedule.id)));
     } catch (error) {
+      if (isAppError(error) && error.code === "NO_AVAILABLE_SCHEDULE") throw error;
       const mapped = isAppError(error) && (error.code === "AI_SERVICE_UNAVAILABLE" || error.code === "AI_INVALID_RESPONSE") ? error : unavailable();
-      const fallbackAnalysis = await this.dependencies.chat.transaction(async (tx) => {
-        const fallback = await tx.insertAnalysis({ messageId: message.id, status: "failed", intent: "Other", confidence: 0, extractedData: {}, recommendedScheduleIds: [], reply: SAFE_FALLBACK_REPLY, nextState: "active", model: "unavailable", modelVersion: "unavailable", errorCode: mapped.code });
-        const assistant = await tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "assistant", content: SAFE_FALLBACK_REPLY });
-        const updated = await tx.updateSession(sessionId, { status: "active", currentIntent: null, proposedScheduleId: null });
-        if (!updated) throw internal();
-        return { fallback, assistant };
-      });
-      void fallbackAnalysis;
+      await this.persistFailure(sessionId, message.id, publicFailureCode(mapped));
       throw mapped;
     }
 
     const firstRecommendation = analysis.recommendedScheduleIds[0] ?? null;
     const nextStatus = firstRecommendation && analysis.nextState === "awaiting_confirmation" ? "awaiting_confirmation" : "active";
-    const persisted = await this.dependencies.chat.transaction(async (tx) => {
+    const persisted = await this.dependencies.coordinator.transaction(async (unit) => {
+      const current = await unit.chat.findSession(sessionId, true);
+      if (!current || isTerminal(current)) throw coded("CHAT_SESSION_CLOSED", "Chat session is no longer active");
+      const tx = unit.chat;
       const storedAnalysis = await tx.insertAnalysis({ messageId: message.id, status: "completed", intent: analysis.intent, confidence: analysis.confidence, extractedData: analysis.extracted, recommendedScheduleIds: analysis.recommendedScheduleIds, reply: analysis.reply, nextState: nextStatus, model: analysis.model, modelVersion: analysis.modelVersion });
       const assistant = await tx.insertMessage({ sessionId, sequence: await tx.nextMessageSequence(sessionId), role: "assistant", content: analysis.reply });
       const updated = await tx.updateSession(sessionId, { status: nextStatus, currentIntent: analysis.intent, proposedScheduleId: firstRecommendation });
       if (!updated) throw internal();
       return { storedAnalysis, assistant, updated };
-    }).catch((error: unknown) => { throw mapPersistenceError(error) ?? internal(); });
+    }).catch((error: unknown) => { throw mapPersistenceError(error) ?? (isAppError(error) ? error : internal()); });
     return { session: serializeSession(persisted.updated), message: serializeMessage(message), assistantMessage: serializeMessage(persisted.assistant), analysis: serializeAnalysis(persisted.storedAnalysis) };
   }
 
@@ -362,7 +436,7 @@ export class ChatService {
         if (!booking) throw notFound("Booking not found");
         if (booking.memberId !== member.id) throw forbidden("Booking does not belong to the member");
         if (booking.status !== "booked") throw coded("BOOKING_STATE_CHANGED", "Only booked reservations can be rescheduled");
-        if (session.sourceScheduleId && booking.scheduleId !== session.sourceScheduleId) throw coded("BOOKING_STATE_CHANGED", "Booking source schedule changed");
+        if (!session.sourceScheduleId || booking.scheduleId !== session.sourceScheduleId) throw coded("BOOKING_STATE_CHANGED", "Booking source schedule changed");
         const source = await tx.booking.findSchedule(booking.scheduleId, true);
         if (!source) throw conflict("Booking source schedule no longer exists");
         const target = await tx.booking.findSchedule(scheduleId, true);

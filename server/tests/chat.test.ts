@@ -30,6 +30,8 @@ class FakeChatRepository implements ChatRepository {
   readonly analyses: ChatMessageAnalysisRecord[] = [];
   failAnalysis = false;
   failUpdateSession = false;
+  failAssistantOnce = false;
+  failListMessagesOnce = false;
 
   async transaction<T>(fn: (tx: ChatRepository) => Promise<T>): Promise<T> {
     const sessions = structuredClone(this.sessions);
@@ -60,10 +62,14 @@ class FakeChatRepository implements ChatRepository {
     Object.assign(item, patch, { updatedAt: new Date() });
     return item;
   }
-  async listMessages(sessionId: string) { return this.messages.filter((item) => item.sessionId === sessionId).sort((a, b) => a.sequence - b.sequence); }
+  async listMessages(sessionId: string) {
+    if (this.failListMessagesOnce) { this.failListMessagesOnce = false; throw new Error("context read failed"); }
+    return this.messages.filter((item) => item.sessionId === sessionId).sort((a, b) => a.sequence - b.sequence);
+  }
   async findMessageByClientId(sessionId: string, clientMessageId: string) { return this.messages.find((item) => item.sessionId === sessionId && item.clientMessageId === clientMessageId) ?? null; }
   async nextMessageSequence(sessionId: string) { return Math.max(0, ...this.messages.filter((item) => item.sessionId === sessionId).map((item) => item.sequence)) + 1; }
   async insertMessage(input: NewChatMessage) {
+    if (this.failAssistantOnce && input.role === "assistant") { this.failAssistantOnce = false; throw new Error("assistant persistence failed"); }
     const item: ChatMessageRecord = { ...input, id: crypto.randomUUID(), clientMessageId: input.clientMessageId ?? null, createdAt: new Date() };
     this.messages.push(item);
     return item;
@@ -101,6 +107,9 @@ class FakeAiClient implements GenAiClient {
 class FakeRescheduleRepository {
   readonly requests: RescheduleRequestRecord[] = [];
   failInsert = false;
+  extraRequests: RescheduleRequestRecord[] = [];
+
+  async listRequests() { return [...this.requests, ...this.extraRequests]; }
 
   async insertRequest(input: { bookingId: string; memberId: string; fromScheduleId: string; toScheduleId: string; customerMessage: string; chatSessionId: string | null }) {
     const now = new Date();
@@ -182,6 +191,10 @@ test("a valid Reschedule proposal moves the session to awaiting_confirmation", a
   expect(turn.session.status).toBe("awaiting_confirmation");
   expect(turn.session.currentIntent).toBe("Reschedule");
   expect(turn.session.proposedScheduleId).toBe(candidateScheduleId);
+  expect(turn.session).not.toHaveProperty("memberId");
+  expect(turn.session).not.toHaveProperty("sourceScheduleId");
+  expect(turn.message).not.toHaveProperty("sessionId");
+  expect(turn.message).not.toHaveProperty("clientMessageId");
 });
 
 test("a recommendation outside the backend candidate set is rejected", async () => {
@@ -275,6 +288,51 @@ test("invalid AI retry is idempotent and analysis serialization is public-only",
   expect(chat.analyses).toHaveLength(1);
 });
 
+test("retries recover after successful-turn persistence failure", async () => {
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const session = await service.createSession(user, bookingId);
+  const clientMessageId = "00000000-0000-4000-8000-000000000023";
+  chat.failUpdateSession = true;
+  await expect(service.sendMessage(user, session.id, { message: "retryable", clientMessageId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+  chat.failUpdateSession = false;
+  const retry = await service.sendMessage(user, session.id, { message: "retryable again", clientMessageId });
+  expect(retry.session.status).toBe("awaiting_confirmation");
+  expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
+});
+
+test("retries recover after context and fallback persistence failures", async () => {
+  const session = await service.createSession(user, bookingId);
+  const clientMessageId = "00000000-0000-4000-8000-000000000024";
+  chat.failListMessagesOnce = true;
+  await expect(service.sendMessage(user, session.id, { message: "context retry", clientMessageId })).rejects.toMatchObject({ code: "AI_SERVICE_UNAVAILABLE" });
+  const contextRetry = await service.sendMessage(user, session.id, { message: "context retry", clientMessageId });
+  expect(contextRetry.analysis.reply).toBe(SAFE_FALLBACK_REPLY);
+
+  await chat.updateSession(session.id, { status: "closed" });
+  const fallbackSession = await service.createSession(user, bookingId);
+  const fallbackClientMessageId = "00000000-0000-4000-8000-000000000025";
+  ai.error = new AppError("INTERNAL_SERVER_ERROR", "transport", 503);
+  chat.failAssistantOnce = true;
+  await expect(service.sendMessage(user, fallbackSession.id, { message: "fallback retry", clientMessageId: fallbackClientMessageId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+  ai.error = null;
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const fallbackRetry = await service.sendMessage(user, fallbackSession.id, { message: "fallback retry", clientMessageId: fallbackClientMessageId });
+  expect(fallbackRetry.session.status).toBe("awaiting_confirmation");
+  expect(chat.messages.filter((item) => item.clientMessageId === fallbackClientMessageId)).toHaveLength(1);
+});
+
+test("retry resumes after successful analysis persistence fails", async () => {
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const session = await service.createSession(user, bookingId);
+  const clientMessageId = "00000000-0000-4000-8000-000000000026";
+  chat.failUpdateSession = true;
+  await expect(service.sendMessage(user, session.id, { message: "persist retry", clientMessageId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+  chat.failUpdateSession = false;
+  const retry = await service.sendMessage(user, session.id, { message: "persist retry", clientMessageId });
+  expect(retry.session.status).toBe("awaiting_confirmation");
+  expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
+});
+
 test("context filters cancelled, full, wrong-service, capacity-full, and current schedules", async () => {
   const cancelled = "00000000-0000-4000-8000-000000000030";
   const full = "00000000-0000-4000-8000-000000000031";
@@ -298,6 +356,13 @@ test("context filters cancelled, full, wrong-service, capacity-full, and current
   expect(ai.lastContext).not.toHaveProperty("passwordHash");
   expect(ai.lastContext).not.toHaveProperty("medicalHistory");
   expect(ai.lastContext).not.toHaveProperty("paymentReference");
+  expect(ai.lastContext?.session).not.toHaveProperty("memberId");
+  expect(ai.lastContext?.session).not.toHaveProperty("createdAt");
+  expect(ai.lastContext?.messages[0]).not.toHaveProperty("sessionId");
+  expect(ai.lastContext?.messages[0]).not.toHaveProperty("clientMessageId");
+  expect(ai.lastContext?.booking).not.toHaveProperty("memberId");
+  expect(ai.lastContext?.sourceSchedule).not.toHaveProperty("status");
+  expect(ai.lastContext?.sourceSchedule).not.toHaveProperty("capacity");
 });
 
 test("malformed injected AI payloads persist invalid sentinels", async () => {
@@ -339,12 +404,12 @@ test("ownership, terminal, source-change, and stale target errors are exact", as
   await expect(service.confirmSchedule(user, activeSession.id, candidateScheduleId)).rejects.toMatchObject({ code: "BOOKING_STATE_CHANGED" });
 });
 
-test("no candidates stays active without a request", async () => {
+test("no candidates return NO_AVAILABLE_SCHEDULE without calling AI", async () => {
   ai.result = { ...ai.result, intent: "Other", recommendedScheduleIds: [], nextState: "active" };
   const localService = makeService(chat, ai, coordinator, reschedule, []);
   const session = await localService.createSession(user, bookingId);
-  const turn = await localService.sendMessage(user, session.id, { message: "Nothing?" });
-  expect(turn.session.status).toBe("active");
+  await expect(localService.sendMessage(user, session.id, { message: "Nothing?" })).rejects.toMatchObject({ code: "NO_AVAILABLE_SCHEDULE" });
+  expect(ai.lastContext).toBeNull();
   expect(reschedule.requests).toHaveLength(0);
 });
 
@@ -384,4 +449,19 @@ test("duplicate active chat sessions are rejected", async () => {
   await service.createSession(user, bookingId);
   await expect(service.createSession(user, bookingId)).rejects.toMatchObject({ code: "CONFLICT" });
   expect(chat.sessions).toHaveLength(1);
+});
+
+test("active reschedule requests are checked inside session creation transaction", async () => {
+  const activeRequest: RescheduleRequestRecord = {
+    id: crypto.randomUUID(), bookingId, memberId, chatSessionId: null, fromScheduleId: sourceScheduleId, toScheduleId: candidateScheduleId,
+    customerMessage: "pending", adminNote: null, status: "pending", reviewedBy: null, reviewedAt: null, createdAt: new Date(), updatedAt: new Date(),
+  };
+  reschedule.extraRequests.push(activeRequest);
+  const dependencies = {
+    chat, ai, coordinator, reschedule, member: { id: memberId, userId: user.userId, status: "active" as const },
+    eligibility: { subscriptionStatus: "active" as const, subscriptionExpiresAt: new Date("2030-01-01"), remainingQuota: 3 }, booking,
+    sourceSchedule: { id: sourceScheduleId, serviceId }, candidates: [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }], activeRequests: [activeRequest],
+  } satisfies ChatServiceContractDependencies;
+  const guarded = new ChatService(dependencies);
+  await expect(guarded.createSession(user, bookingId)).rejects.toMatchObject({ code: "CONFLICT" });
 });
