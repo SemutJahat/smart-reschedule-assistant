@@ -69,6 +69,14 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   if (config.nodeEnv !== "test" && config.databaseUrl && !db) {
     throw new Error("An explicit database connection is required when DATABASE_URL is configured");
   }
+  const hasCustomPersistenceRepository = options.catalogRepository !== undefined
+    || options.paymentRepository !== undefined
+    || options.bookingRepository !== undefined
+    || options.rescheduleRepository !== undefined
+    || options.chatRepository !== undefined;
+  if (db && hasCustomPersistenceRepository && !options.chatTransactionCoordinator) {
+    throw new Error("An explicit chatTransactionCoordinator is required when custom persistence repositories are used with a database connection");
+  }
   const jwtSecret = config.jwtSecret;
   const refreshSecret = config.jwtRefreshSecret;
   const repository = options.repository ?? (db ? createAuthRepository(db.db) : new InMemoryAuthRepository());
