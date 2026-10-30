@@ -2306,9 +2306,98 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test(\"response status is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"session has the exact fields\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"bookingId\", \"createdAt\", \"currentIntent\", \"id\", \"proposedScheduleId\", \"status\", \"updatedAt\"]); });",
                   "pm.environment.set(\"chatSessionId\", body.id);",
                   "pm.test(\"chat session uses the dedicated booking\", function () { pm.expect(body.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); });",
                   "pm.expect(body.status).to.eql(\"active\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin isolate direct target from chatbot candidates",
+          "request": {
+            "method": "PATCH",
+            "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. The direct target is restored at the end of this folder before the existing Reschedule Requests folder runs; direct request definitions are unchanged.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/schedules/{{targetScheduleId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"cancelled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"direct target is isolated from chatbot candidates\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(\"cancelled\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin verify isolated chat candidate",
+          "request": {
+            "method": "GET",
+            "description": "Verifies the fresh Postman fixture has exactly one available same-service chatbot candidate after isolating the direct target: chatTargetScheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/schedules?status=available",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const schedules = pm.response.json();",
+                  "const candidates = schedules.filter(function (item) { return item.serviceId === pm.environment.get(\"serviceId\") && item.id !== pm.environment.get(\"chatSourceScheduleId\") && item.status === \"available\"; });",
+                  "pm.test(\"only the dedicated chat target is an available candidate\", function () { pm.expect(candidates.map(function (item) { return item.id; })).to.eql([pm.environment.get(\"chatTargetScheduleId\")]); });"
                 ]
               }
             }
@@ -2359,10 +2448,16 @@
                   "const body = pm.response.json();",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "pm.test(\"turn has the exact top-level fields\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"analysis\", \"assistantMessage\", \"session\", \"userMessage\"]); });",
+                  "pm.test(\"turn session has the exact fields\", function () { pm.expect(Object.keys(body.session).sort()).to.eql([\"currentIntent\", \"id\", \"proposedScheduleId\", \"status\"]); });",
+                  "pm.test(\"user message has the exact fields\", function () { pm.expect(Object.keys(body.userMessage).sort()).to.eql([\"content\", \"id\", \"role\"]); });",
+                  "pm.test(\"assistant message has the exact fields\", function () { pm.expect(Object.keys(body.assistantMessage).sort()).to.eql([\"content\", \"id\", \"role\"]); });",
+                  "pm.test(\"analysis has the exact fields\", function () { pm.expect(Object.keys(body.analysis).sort()).to.eql([\"confidence\", \"intent\", \"recommendedSchedules\"]); });",
+                  "pm.test(\"recommended schedule has the exact fields\", function () { pm.expect(body.analysis.recommendedSchedules).to.have.length(1); pm.expect(Object.keys(body.analysis.recommendedSchedules[0]).sort()).to.eql([\"endsAt\", \"id\", \"startsAt\"]); });",
                   "pm.environment.set(\"chatMessageId\", body.userMessage.id);",
+                  "pm.environment.set(\"proposedScheduleId\", body.session.proposedScheduleId);",
                   "pm.test(\"intent is exactly Reschedule\", function () { pm.expect(body.analysis.intent).to.eql(\"Reschedule\"); });",
                   "pm.test(\"session is exactly awaiting_confirmation\", function () { pm.expect(body.session.status).to.eql(\"awaiting_confirmation\"); });",
-                  "pm.test(\"recommendedSchedules contains exactly the dedicated target\", function () { pm.expect(body.analysis.recommendedSchedules).to.have.length(1); pm.expect(body.analysis.recommendedSchedules[0].id).to.eql(pm.environment.get(\"chatTargetScheduleId\")); pm.expect(Object.keys(body.analysis.recommendedSchedules[0]).sort()).to.eql([\"endsAt\", \"id\", \"startsAt\"]); });"
+                  "pm.test(\"proposed schedule and recommendation are the dedicated target\", function () { pm.expect(body.session.proposedScheduleId).to.eql(body.analysis.recommendedSchedules[0].id); pm.expect(body.session.proposedScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
                 ]
               }
             }
@@ -2446,7 +2541,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"scheduleId\": \"{{chatTargetScheduleId}}\"\n}",
+              "raw": "{\n  \"scheduleId\": \"{{proposedScheduleId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2542,6 +2637,7 @@
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const body = pm.response.json();",
                   "pm.test(\"messages are an array\", function () { pm.expect(body).to.be.an(\"array\"); });",
+                  "pm.test(\"every message has the exact fields\", function () { body.forEach(function (item) { pm.expect(Object.keys(item).sort()).to.eql([\"content\", \"id\", \"role\"]); }); });",
                   "pm.test(\"captured chat message is present\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"chatMessageId\"); })).to.eql(true); });"
                 ]
               }
@@ -2579,8 +2675,10 @@
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const body = pm.response.json();",
+                  "pm.test(\"pending response is an array\", function () { pm.expect(body).to.be.an(\"array\"); });",
                   "const request = body.find(function (item) { return item.id === pm.environment.get(\"chatRescheduleId\"); });",
-                  "pm.test(\"chat request is listed as pending\", function () { pm.expect(request).to.not.be.undefined; pm.expect(request.status).to.eql(\"pending\"); pm.expect(request.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(request.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(request.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(request.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
+                  "pm.test(\"pending request has the documented exact fields\", function () { pm.expect(request).to.not.be.undefined; pm.expect(Object.keys(request).sort()).to.eql([\"adminNote\", \"bookingId\", \"chatSessionId\", \"createdAt\", \"customerMessage\", \"fromScheduleId\", \"id\", \"memberId\", \"reviewedAt\", \"reviewedBy\", \"status\", \"toScheduleId\", \"updatedAt\"]); });",
+                  "pm.test(\"chat request is listed as pending\", function () { pm.expect(request.status).to.eql(\"pending\"); pm.expect(request.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(request.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(request.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(request.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
                 ]
               }
             }
@@ -2668,8 +2766,10 @@
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const body = pm.response.json();",
+                  "pm.test(\"approved response has the documented exact fields\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"adminNote\", \"bookingId\", \"chatSessionId\", \"createdAt\", \"customerMessage\", \"fromScheduleId\", \"id\", \"memberId\", \"reviewedAt\", \"reviewedBy\", \"status\", \"toScheduleId\", \"updatedAt\"]); });",
                   "pm.expect(body.id).to.eql(pm.environment.get(\"chatRescheduleId\"));",
                   "pm.test(\"chat request is approved\", function () { pm.expect(body.status).to.eql(\"approved\"); });",
+                  "pm.test(\"approved request retains the dedicated tuple\", function () { pm.expect(body.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(body.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(body.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(body.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });",
                   "pm.test(\"reviewer and timestamp exist\", function () { pm.expect(body.reviewedBy).to.not.be.undefined; pm.expect(body.reviewedAt).to.not.be.null; });"
                 ]
               }
@@ -2708,6 +2808,56 @@
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const booking = pm.response.json().find(function (item) { return item.id === pm.environment.get(\"chatBookingId\"); });",
                   "pm.test(\"approved chat booking moved to target\", function () { pm.expect(booking).to.not.be.undefined; pm.expect(booking.scheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); pm.expect(booking.status).to.eql(\"booked\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin restore direct target schedule",
+          "request": {
+            "method": "PATCH",
+            "description": "Restores the direct-flow target schedule after chatbot approval so the existing Reschedule Requests folder retains its original fixture semantics.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/schedules/{{targetScheduleId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"direct target is restored for the direct flow\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(\"available\"); });"
                 ]
               }
             }
