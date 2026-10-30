@@ -2104,7 +2104,7 @@
     },
     {
       "name": "Chatbot Reschedule",
-      "description": "Dedicated chatbot reschedule flow. Run after the authentication, coach, package, payment, subscription, booking, and schedule setup requests in this collection. It creates separate schedules and a separate booking so it cannot conflict with the direct Reschedule Requests flow. Configure the server process with GEN_AI_MODE=stub for deterministic recommendations; the Postman environment value documents that setting only. The folder temporarily isolates the pre-existing direct target schedule and has an explicit cleanup request that restores its captured original status. Postman has no finally hook: run this folder without Newman --bail, and if execution is interrupted before cleanup, run Cleanup: restore direct target schedule manually before the direct flow.",
+      "description": "Dedicated chatbot reschedule flow. Run after the authentication, coach, package, payment, subscription, booking, and schedule setup requests in this collection. It creates separate schedules and a separate booking so it cannot conflict with the direct Reschedule Requests flow. Configure the server process with GEN_AI_MODE=stub for deterministic recommendations; the Postman environment value documents that setting only. The folder temporarily isolates the pre-existing direct target schedule and has an explicit cleanup request that restores its captured original status. Postman has no finally hook: run this folder without --bail, or manually run Cleanup: restore direct target schedule after any interruption before the direct flow.",
       "item": [
         {
           "name": "Admin create chat source schedule",
@@ -2359,7 +2359,7 @@
           "name": "Admin isolate direct target from chatbot candidates",
           "request": {
             "method": "PATCH",
-            "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. The direct target is restored at the end of this folder before the existing Reschedule Requests folder runs; direct request definitions are unchanged.",
+            "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. Cleanup: restore direct target schedule runs immediately after the chatbot message assertion and restores the captured original status. Postman has no finally hook: run this folder without --bail, or manually run cleanup after an interruption; direct request definitions are unchanged.",
             "header": [
               {
                 "key": "Authorization",
@@ -2413,7 +2413,7 @@
               }
             }
           ],
-          "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. The preceding capture request stores the exact original status in directTargetOriginalStatus. Its pre-request guard skips cancellation if capture did not succeed."
+          "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. The preceding capture request stores the exact original status in directTargetOriginalStatus. Cleanup: restore direct target schedule runs immediately after the chatbot message assertion; if execution is interrupted, manually run cleanup before the direct flow. Its pre-request guard skips cancellation if capture did not succeed."
         },
         {
           "name": "Customer send chat message",
@@ -2479,7 +2479,7 @@
           "name": "Cleanup: restore direct target schedule",
           "request": {
             "method": "PATCH",
-            "description": "Explicit cleanup request. Restores the direct-flow target to the exact status captured in directTargetOriginalStatus, rather than hardcoding available. Postman has no finally hook; run this folder without --bail, and run this request manually if execution stops before cleanup.",
+            "description": "Explicit cleanup request. Restores the direct-flow target to the exact status captured in directTargetOriginalStatus, rather than hardcoding available. Postman has no finally hook: run the folder without --bail, or manually run this cleanup request after any interruption before the direct flow.",
             "header": [
               {
                 "key": "Authorization",
@@ -2528,7 +2528,7 @@
                 "exec": [
                   "const body = pm.response.json();",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"direct target is restored for the direct flow\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(\"available\"); });"
+                  "pm.test(\"direct target is restored for the direct flow\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(pm.environment.get(\"directTargetOriginalStatus\")); });"
                 ]
               }
             }
