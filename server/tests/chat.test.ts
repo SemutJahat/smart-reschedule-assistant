@@ -195,6 +195,8 @@ test("a valid Reschedule proposal moves the session to awaiting_confirmation", a
   expect(turn.session).not.toHaveProperty("sourceScheduleId");
   expect(turn.userMessage).not.toHaveProperty("sessionId");
   expect(turn.userMessage).not.toHaveProperty("clientMessageId");
+  expect(Object.keys(turn.userMessage).sort()).toEqual(["content", "id", "role"]);
+  expect(Object.keys(turn.analysis).sort()).toEqual(["confidence", "intent", "recommendedSchedules"]);
 });
 
 test("a recommendation outside the backend candidate set is rejected", async () => {
@@ -326,7 +328,7 @@ test("retries recover after context and fallback persistence failures", async ()
   chat.failListMessagesOnce = true;
   await expect(service.sendMessage(user, session.id, { message: "context retry", clientMessageId })).rejects.toMatchObject({ code: "AI_SERVICE_UNAVAILABLE" });
   const contextRetry = await service.sendMessage(user, session.id, { message: "context retry", clientMessageId });
-  expect(contextRetry.analysis.reply).toBe(SAFE_FALLBACK_REPLY);
+  expect(contextRetry.assistantMessage.content).toBe(SAFE_FALLBACK_REPLY);
 
   await chat.updateSession(session.id, { status: "closed" });
   const fallbackSession = await service.createSession(user, bookingId);

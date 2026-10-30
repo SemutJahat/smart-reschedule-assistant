@@ -59,13 +59,11 @@ test("chat routes create, message, confirm, and read a pending reschedule", asyn
   expect(turn.session.status).toBe("awaiting_confirmation");
   expect(turn).toHaveProperty("userMessage");
   expect(turn).not.toHaveProperty("message");
-  expect(turn.analysis).toHaveProperty("extracted");
   expect(turn.analysis).toHaveProperty("recommendedSchedules");
-  expect(turn.analysis).not.toHaveProperty("extractedData");
-  expect(turn.analysis).not.toHaveProperty("recommendedScheduleIds");
-  expect(turn.analysis).not.toHaveProperty("messageId");
-  expect(turn.analysis).not.toHaveProperty("status");
-  expect(turn.analysis).not.toHaveProperty("errorCode");
+  expect(Object.keys(turn.userMessage).sort()).toEqual(["content", "id", "role"]);
+  expect(Object.keys(turn.assistantMessage).sort()).toEqual(["content", "id", "role"]);
+  expect(Object.keys(turn.analysis).sort()).toEqual(["confidence", "intent", "recommendedSchedules"]);
+  expect(Object.keys(turn.analysis.recommendedSchedules[0]).sort()).toEqual(["endsAt", "id", "startsAt"]);
 
   const confirmed = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/confirm`, { method: "POST", ...json({ scheduleId: targetScheduleId }, customerToken) }));
   expect(confirmed.status).toBe(201);
@@ -74,6 +72,8 @@ test("chat routes create, message, confirm, and read a pending reschedule", asyn
   expect(confirmation).toHaveProperty("message");
   expect(confirmation).not.toHaveProperty("booking");
   expect(confirmation).not.toHaveProperty("request");
+  expect(Object.keys(confirmation).sort()).toEqual(["message", "rescheduleRequest", "sessionId", "status"]);
+  expect(Object.keys(confirmation.rescheduleRequest).sort()).toEqual(["bookingId", "chatSessionId", "fromScheduleId", "id", "status", "toScheduleId"]);
 
   expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);
   expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);

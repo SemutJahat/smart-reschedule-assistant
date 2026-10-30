@@ -36,27 +36,16 @@ const messageResponse = t.Object({
   id: uuid,
   role: messageRole,
   content: t.String(),
-  sequence: t.Integer(),
-  createdAt: dateTime,
 });
 
 const analysisResponse = t.Object({
   intent: chatIntent,
   confidence: t.Number({ minimum: 0, maximum: 1 }),
-  extracted: t.Record(t.String(), t.Unknown()),
   recommendedSchedules: t.Array(t.Object({
     id: uuid,
-    title: t.String(),
-    serviceId: uuid,
     startsAt: dateTime,
     endsAt: dateTime,
-    coachId: uuid,
   })),
-  reply: t.String({ minLength: 1, maxLength: MAX_GEN_AI_REPLY_LENGTH }),
-  nextState: t.Union([t.Literal("active"), t.Literal("awaiting_confirmation"), t.Literal("submitted")]),
-  model: t.String({ minLength: 1 }),
-  modelVersion: t.String({ minLength: 1 }),
-  createdAt: dateTime,
 });
 
 const turnResponse = t.Object({
@@ -72,7 +61,6 @@ const requestResponse = t.Object({
   chatSessionId: t.Union([uuid, t.Null()]),
   fromScheduleId: uuid,
   toScheduleId: uuid,
-  customerMessage: t.Union([t.String(), t.Null()]),
   status: t.Union([
     t.Literal("pending"),
     t.Literal("held"),
@@ -80,8 +68,6 @@ const requestResponse = t.Object({
     t.Literal("rejected"),
     t.Literal("cancelled"),
   ]),
-  createdAt: dateTime,
-  updatedAt: dateTime,
 });
 
 const confirmationResponse = t.Object({

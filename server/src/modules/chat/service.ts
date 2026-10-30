@@ -71,29 +71,18 @@ export interface SerializedChatMessage {
   id: string;
   role: ChatMessageRecord["role"];
   content: string;
-  sequence: number;
-  createdAt: string;
 }
 
 export interface SerializedChatSchedule {
   id: string;
-  title: string;
-  serviceId: string;
   startsAt: string;
   endsAt: string;
-  coachId: string;
 }
 
 export interface SerializedChatAnalysis {
   intent: ChatIntent;
   confidence: number;
-  extracted: Record<string, unknown>;
   recommendedSchedules: SerializedChatSchedule[];
-  reply: string;
-  nextState: ChatAnalysisNextState;
-  model: string;
-  modelVersion: string;
-  createdAt: string;
 }
 
 export interface ChatTurn {
@@ -140,10 +129,7 @@ export interface SerializedRescheduleRequest {
   chatSessionId: string | null;
   fromScheduleId: string;
   toScheduleId: string;
-  customerMessage: string | null;
   status: RescheduleRequestRecord["status"];
-  createdAt: string;
-  updatedAt: string;
 }
 
 const SAFE_FALLBACK_REPLY = "I couldn't process that request right now. Please try again.";
@@ -167,15 +153,15 @@ function serializeSession(item: ChatSessionRecord): SerializedChatSession {
 }
 
 function serializeMessage(item: ChatMessageRecord): SerializedChatMessage {
-  return { id: item.id, role: item.role, content: item.content, sequence: item.sequence, createdAt: item.createdAt.toISOString() };
+  return { id: item.id, role: item.role, content: item.content };
 }
 
 function serializeSchedule(item: ScheduleRecord): SerializedChatSchedule {
-  return { id: item.id, title: item.title, serviceId: item.serviceId, startsAt: item.startsAt.toISOString(), endsAt: item.endsAt.toISOString(), coachId: item.coachId };
+  return { id: item.id, startsAt: item.startsAt.toISOString(), endsAt: item.endsAt.toISOString() };
 }
 
 function serializeAnalysis(item: ChatMessageAnalysisRecord, recommendedSchedules: SerializedChatSchedule[]): SerializedChatAnalysis {
-  return { intent: item.intent, confidence: item.confidence, extracted: structuredClone(item.extractedData), recommendedSchedules, reply: item.reply, nextState: item.nextState, model: item.model, modelVersion: item.modelVersion, createdAt: item.createdAt.toISOString() };
+  return { intent: item.intent, confidence: item.confidence, recommendedSchedules };
 }
 
 async function serializeRecommendedSchedules(ids: string[], catalog: CatalogRepository): Promise<SerializedChatSchedule[]> {
@@ -193,10 +179,7 @@ function serializeRequest(item: RescheduleRequestRecord): SerializedRescheduleRe
     chatSessionId: item.chatSessionId,
     fromScheduleId: item.fromScheduleId,
     toScheduleId: item.toScheduleId,
-    customerMessage: item.customerMessage,
     status: item.status,
-    createdAt: item.createdAt.toISOString(),
-    updatedAt: item.updatedAt.toISOString(),
   };
 }
 
