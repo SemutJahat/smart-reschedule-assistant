@@ -300,6 +300,26 @@ test("retries recover after successful-turn persistence failure", async () => {
   expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
 });
 
+test("stale failure does not clear a newer awaiting-confirmation proposal", async () => {
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const session = await service.createSession(user, bookingId);
+  const firstMessage = "00000000-0000-4000-8000-000000000027";
+  let release!: () => void;
+  let started!: () => void;
+  const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const originalAnalyze = ai.analyze.bind(ai);
+  ai.analyze = async (context) => { started(); await gate; return originalAnalyze(context); };
+  const pending = service.sendMessage(user, session.id, { message: "first", clientMessageId: firstMessage });
+  await startedPromise;
+  await chat.updateSession(session.id, { status: "awaiting_confirmation", currentIntent: "Reschedule", proposedScheduleId: candidateScheduleId });
+  expect(chat.sessions.find((item) => item.id === session.id)).toMatchObject({ status: "awaiting_confirmation", proposedScheduleId: candidateScheduleId });
+  ai.error = new AppError("INTERNAL_SERVER_ERROR", "transport", 503);
+  release();
+  await expect(pending).rejects.toMatchObject({ code: "AI_SERVICE_UNAVAILABLE" });
+  expect(chat.sessions.find((item) => item.id === session.id)).toMatchObject({ status: "awaiting_confirmation", proposedScheduleId: candidateScheduleId });
+});
+
 test("retries recover after context and fallback persistence failures", async () => {
   const session = await service.createSession(user, bookingId);
   const clientMessageId = "00000000-0000-4000-8000-000000000024";
