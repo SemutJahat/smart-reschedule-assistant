@@ -33,6 +33,13 @@ import { createRescheduleRepository, InMemoryRescheduleRepository } from "./modu
 import type { RescheduleRepository } from "./modules/reschedules/schema";
 import { RescheduleService } from "./modules/reschedules/service";
 import { rescheduleRoutes } from "./modules/reschedules/routes";
+import { ChatService } from "./modules/chat/service";
+import { chatRoutes } from "./modules/chat/routes";
+import { createChatRepository, InMemoryChatRepository } from "./modules/chat/repository";
+import type { ChatRepository } from "./modules/chat/schema";
+import { createChatTransactionCoordinator, createInMemoryChatTransactionCoordinator } from "./modules/chat/unit-of-work";
+import type { ChatTransactionCoordinator } from "./modules/chat/unit-of-work";
+import { createGenAiClient, StubGenAiClient, type GenAiClient } from "./modules/chat/client";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
@@ -46,6 +53,9 @@ export interface AppOptions {
   paymentRepository?: PaymentRepository;
   bookingRepository?: BookingRepository;
   rescheduleRepository?: RescheduleRepository;
+  chatRepository?: ChatRepository;
+  chatTransactionCoordinator?: ChatTransactionCoordinator;
+  genAiClient?: GenAiClient;
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
@@ -66,6 +76,17 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const paymentRepository = options.paymentRepository ?? (db ? createPaymentRepository(db.db) : new InMemoryPaymentRepository(catalogRepository));
   const bookingRepository = options.bookingRepository ?? (db ? createBookingRepository(db.db) : new InMemoryBookingRepository(catalogRepository, paymentRepository, catalogRepository.bookings));
   const rescheduleRepository = options.rescheduleRepository ?? (db ? createRescheduleRepository(db.db) : new InMemoryRescheduleRepository(bookingRepository, catalogRepository));
+  const chatRepository = options.chatRepository ?? (db ? createChatRepository(db.db) : new InMemoryChatRepository());
+  const chatTransactionCoordinator = options.chatTransactionCoordinator ?? (db
+    ? createChatTransactionCoordinator(db.db)
+    : chatRepository instanceof InMemoryChatRepository
+      && rescheduleRepository instanceof InMemoryRescheduleRepository
+      && bookingRepository instanceof InMemoryBookingRepository
+      && paymentRepository instanceof InMemoryPaymentRepository
+      && catalogRepository instanceof InMemoryCatalogRepository
+      ? createInMemoryChatTransactionCoordinator({ chat: chatRepository, reschedule: rescheduleRepository, booking: bookingRepository, payment: paymentRepository, catalog: catalogRepository })
+      : (() => { throw new Error("An in-memory chat transaction coordinator is required when custom repositories are configured"); })());
+  const genAiClient = options.genAiClient ?? (config.nodeEnv === "test" ? new StubGenAiClient() : createGenAiClient(config));
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -106,5 +127,6 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
   const withPayments = paymentRoutes(catalog, new PaymentService(paymentRepository, repository), repository);
   const withBookings = bookingRoutes(withPayments, new BookingService(bookingRepository, repository), repository);
   const withReschedules = rescheduleRoutes(withBookings, new RescheduleService(rescheduleRepository, repository), repository);
-  return authRoutes(userRoutes(memberRoutes(withReschedules, new MemberService(repository)), new UserService(repository)), auth);
+  const withChat = chatRoutes(withReschedules, new ChatService({ auth: repository, catalog: catalogRepository, booking: bookingRepository, payment: paymentRepository, reschedule: rescheduleRepository, chat: chatRepository, coordinator: chatTransactionCoordinator, ai: genAiClient }), repository);
+  return authRoutes(userRoutes(memberRoutes(withChat, new MemberService(repository)), new UserService(repository)), auth);
 }
