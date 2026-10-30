@@ -774,7 +774,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+1-555-0101\",\n  \"emergencyContact\": \"+1-555-0199\",\n  \"weight\": \"76.00\",\n  \"height\": \"180.00\",\n  \"bloodType\": \"O+\",\n  \"medicalHistory\": \"None\",\n  \"status\": \"active\"\n}",
+              "raw": "{\n  \"phone\": \"+1-555-0101\",\n  \"emergencyContact\": \"+1-555-0199\",\n  \"weight\": \"76.00\",\n  \"height\": \"180.00\",\n  \"bloodType\": \"O+\",\n  \"medicalHistory\": \"None\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2104,7 +2104,7 @@
     },
     {
       "name": "Chatbot Reschedule",
-      "description": "Dedicated chatbot reschedule flow. Run after the authentication, coach, package, payment, subscription, booking, and schedule setup requests in this collection. It creates separate schedules and a separate booking so it cannot conflict with the direct Reschedule Requests flow. Configure the server process with GEN_AI_MODE=stub for deterministic recommendations; the Postman environment value documents that setting only. The folder temporarily isolates the pre-existing direct target schedule and has an explicit cleanup request that restores its captured original status. Postman has no finally hook: run this folder without --bail, or manually run Cleanup: restore direct target schedule after any interruption before the direct flow.",
+      "description": "DISPOSABLE DEVELOPMENT DATABASE ONLY; never run against a live/shared user database or concurrently with other writers. Run after the collection's authentication, coach, package, payment, subscription, booking, and schedule setup. Configure the server process with GEN_AI_MODE=stub. Capture records every available same-service alternative except the dedicated chat source/target, including seeded schedules and the direct-flow target, in chatIsolationSchedules. Isolation cancels each captured schedule via authenticated, sequential pm.sendRequest callbacks and verifies that only chatTargetScheduleId remains eligible. Cleanup immediately after the message restores every captured original status, including after partial isolation, and removes only successfully restored entries. Postman has no finally hook: run without --bail; after any interruption manually run Cleanup: restore isolated schedules with the SAME environment before retrying or running the direct flow. Preserve/export that environment for recovery; if it is lost, reset the disposable database. A new capture resets run-local state but refuses to overwrite outstanding cleanup entries. Direct Reschedule Requests definitions are unchanged.",
       "item": [
         {
           "name": "Admin create chat source schedule",
@@ -2316,10 +2316,10 @@
           ]
         },
         {
-          "name": "Admin capture direct target original status",
+          "name": "Admin capture chatbot candidate schedules",
           "request": {
             "method": "GET",
-            "description": "Pre-step before fixture isolation. Reads all schedules, captures the existing direct-flow target status in directTargetOriginalStatus, and refuses to continue the isolation step if the target is missing. This value is used by cleanup instead of assuming available.",
+            "description": "Disposable database only. Reset capture/readiness for this run, then snapshot IDs and original statuses of ALL eligible non-chat same-service schedules, including seed data, into chatIsolationSchedules before any mutations. Outstanding cleanup entries block recapture so partial-isolation recovery is never overwritten. Run without --bail and manually run Cleanup: restore isolated schedules with this environment after interruption.",
             "header": [
               {
                 "key": "Authorization",
@@ -2340,26 +2340,46 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"chatIsolationReady\", false);",
+                  "pm.environment.set(\"chatIsolationCaptureReady\", false);",
+                  "const outstanding = JSON.parse(pm.environment.get(\"chatIsolationSchedules\") || \"[]\");",
+                  "if (!Array.isArray(outstanding) || outstanding.length) { pm.execution.skipRequest(); throw new Error(\"Run Cleanup: restore isolated schedules before recapture; keep the recovery environment.\"); }",
+                  "pm.environment.set(\"chatIsolationSchedules\", \"[]\");"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const schedules = pm.response.json();",
-                  "const target = schedules.find(function (item) { return item.id === pm.environment.get(\"targetScheduleId\"); });",
-                  "pm.test(\"direct target exists before isolation\", function () { pm.expect(target).to.not.be.undefined; });",
-                  "pm.test(\"direct target status is restorable\", function () { pm.expect([\"available\", \"full\", \"cancelled\"]).to.include(target.status); });",
-                  "if (target) pm.environment.set(\"directTargetOriginalStatus\", target.status);"
+                  "if (pm.response.code !== 200 || !Array.isArray(schedules)) throw new Error(\"Cannot capture isolation schedules\");",
+                  "const sourceId = pm.environment.get(\"chatSourceScheduleId\");",
+                  "const targetId = pm.environment.get(\"chatTargetScheduleId\");",
+                  "const serviceId = pm.environment.get(\"serviceId\");",
+                  "const source = schedules.find(function (item) { return item.id === sourceId && item.serviceId === serviceId; });",
+                  "const target = schedules.find(function (item) { return item.id === targetId && item.serviceId === serviceId && item.status === \"available\" && item.bookedCount < item.capacity; });",
+                  "pm.test(\"dedicated source and eligible target exist\", function () { pm.expect(source).to.be.ok; pm.expect(target).to.be.ok; pm.expect(sourceId).to.not.eql(targetId); });",
+                  "if (!source || !target || sourceId === targetId) throw new Error(\"Invalid chat fixture; no isolation performed\");",
+                  "const candidates = schedules.filter(function (item) { return item.serviceId === serviceId && item.id !== sourceId && item.id !== targetId && item.status === \"available\" && item.bookedCount < item.capacity; });",
+                  "pm.environment.set(\"chatIsolationSchedules\", JSON.stringify(candidates.map(function (item) { return { id: item.id, status: item.status }; })));",
+                  "pm.environment.set(\"chatIsolationCaptureReady\", true);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Admin isolate direct target from chatbot candidates",
+          "name": "Admin isolate chatbot candidate schedules",
           "request": {
-            "method": "PATCH",
-            "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. Cleanup: restore direct target schedule runs immediately after the chatbot message assertion and restores the captured original status. Postman has no finally hook: run this folder without --bail, or manually run cleanup after an interruption; direct request definitions are unchanged.",
+            "method": "GET",
+            "description": "Disposable database only. Sequential authenticated PATCH callbacks cancel every captured same-service candidate, including seeded schedules. Every response is asserted; a final authenticated GET verifies exactly chatTargetScheduleId remains eligible before enabling the chat message. The recovery snapshot is retained even if cancellation fails partway through. Run without --bail; manually run Cleanup: restore isolated schedules after interruption using the same environment.",
             "header": [
               {
                 "key": "Authorization",
@@ -2370,7 +2390,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/schedules/{{targetScheduleId}}",
+            "url": "{{baseUrl}}/schedules",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -2380,15 +2400,6 @@
                   "type": "string"
                 }
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"cancelled\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -2397,7 +2408,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get(\"directTargetOriginalStatus\")) { pm.execution.skipRequest(); }"
+                  "pm.environment.set(\"chatIsolationReady\", false);",
+                  "if (String(pm.environment.get(\"chatIsolationCaptureReady\")) !== \"true\") { pm.execution.skipRequest(); throw new Error(\"Capture must succeed before isolation; run cleanup for any outstanding entries.\"); }"
                 ]
               }
             },
@@ -2406,20 +2418,45 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"direct target is isolated from chatbot candidates\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(\"cancelled\"); });"
+                  "pm.environment.set(\"chatIsolationCaptureReady\", false);",
+                  "if (pm.response.code !== 200) throw new Error(\"Isolation failed; run cleanup\");",
+                  "const captured = JSON.parse(pm.environment.get(\"chatIsolationSchedules\") || \"[]\");",
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "const headers = { Authorization: \"Bearer \" + pm.environment.get(\"adminAccessToken\"), \"Content-Type\": \"application/json\" };",
+                  "let isolationFailed = false;",
+                  "function isolateNext(index) {",
+                  "  if (index === captured.length) {",
+                  "    pm.sendRequest({ url: baseUrl + \"/schedules\", method: \"GET\", header: headers }, function (error, response) {",
+                  "      let rows; try { rows = response && response.json(); } catch (_) {}",
+                  "      const candidates = Array.isArray(rows) ? rows.filter(function (item) { return item.serviceId === pm.environment.get(\"serviceId\") && item.id !== pm.environment.get(\"chatSourceScheduleId\") && item.status === \"available\" && item.bookedCount < item.capacity; }) : [];",
+                  "      pm.test(\"isolation verification response is 200\", function () { pm.expect(error).to.not.be.ok; pm.expect(response && response.code).to.eql(200); pm.expect(rows).to.be.an(\"array\"); });",
+                  "      pm.test(\"only the dedicated chat target remains eligible\", function () { pm.expect(candidates.map(function (item) { return item.id; })).to.eql([pm.environment.get(\"chatTargetScheduleId\")]); });",
+                  "      const ready = !isolationFailed && !error && response && response.code === 200 && Array.isArray(rows) && candidates.length === 1 && candidates[0].id === pm.environment.get(\"chatTargetScheduleId\");",
+                  "      pm.environment.set(\"chatIsolationReady\", Boolean(ready));",
+                  "    });",
+                  "    return;",
+                  "  }",
+                  "  const entry = captured[index];",
+                  "  pm.sendRequest({ url: baseUrl + \"/schedules/\" + entry.id, method: \"PATCH\", header: headers, body: { mode: \"raw\", raw: JSON.stringify({ status: \"cancelled\" }) } }, function (error, response) {",
+                  "    let body; try { body = response && response.json(); } catch (_) {}",
+                  "    const ok = !error && response && response.code === 200 && body && body.id === entry.id && body.status === \"cancelled\";",
+                  "    pm.test(\"isolated captured schedule \" + entry.id, function () { pm.expect(error).to.not.be.ok; pm.expect(response && response.code).to.eql(200); pm.expect(body && body.id).to.eql(entry.id); pm.expect(body && body.status).to.eql(\"cancelled\"); });",
+                  "    if (!ok) isolationFailed = true;",
+                  "    isolateNext(index + 1);",
+                  "  });",
+                  "}",
+                  "isolateNext(0);"
                 ]
               }
             }
-          ],
-          "description": "Fixture isolation: temporarily cancels the existing direct-flow target schedule so StubGenAiClient's first available candidate is deterministically the dedicated chat target. The preceding capture request stores the exact original status in directTargetOriginalStatus. Cleanup: restore direct target schedule runs immediately after the chatbot message assertion; if execution is interrupted, manually run cleanup before the direct flow. Its pre-request guard skips cancellation if capture did not succeed."
+          ]
         },
         {
           "name": "Customer send chat message",
           "request": {
             "method": "POST",
-            "description": "Sends a reschedule message. Expected with GEN_AI_MODE=stub: HTTP 200, exact Reschedule intent, awaiting_confirmation, and the dedicated target in recommendedSchedules.",
+            "description": "Sends a reschedule message only after successful candidate isolation. Expected with GEN_AI_MODE=stub: HTTP 200, exact Reschedule intent, awaiting_confirmation, and chatTargetScheduleId in recommendedSchedules. Cleanup immediately follows, even if these assertions fail when running without --bail. After interruption manually run Cleanup: restore isolated schedules.",
             "header": [
               {
                 "key": "Authorization",
@@ -2472,14 +2509,23 @@
                   "pm.test(\"proposed schedule and recommendation are the dedicated target\", function () { pm.expect(body.session.proposedScheduleId).to.eql(body.analysis.recommendedSchedules[0].id); pm.expect(body.session.proposedScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
                 ]
               }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (String(pm.environment.get(\"chatIsolationReady\")) !== \"true\") { pm.execution.skipRequest(); throw new Error(\"Candidate isolation failed; run Cleanup: restore isolated schedules.\"); }"
+                ]
+              }
             }
           ]
         },
         {
-          "name": "Cleanup: restore direct target schedule",
+          "name": "Cleanup: restore isolated schedules",
           "request": {
-            "method": "PATCH",
-            "description": "Explicit cleanup request. Restores the direct-flow target to the exact status captured in directTargetOriginalStatus, rather than hardcoding available. Postman has no finally hook: run the folder without --bail, or manually run this cleanup request after any interruption before the direct flow.",
+            "method": "GET",
+            "description": "Disposable database recovery: sequential authenticated PATCH callbacks restore EVERY entry in chatIsolationSchedules to its captured status, whether isolation completed, failed partially, or timed out. Each response is asserted; only successfully restored entries are removed, so failed entries remain retryable. This request immediately follows chat messaging. Postman has no finally hook: run without --bail; after interruption manually run this request with the same environment before recapture or the direct flow. Preserve/export the environment until cleanup succeeds; if lost, reset the disposable database. Do not use a live/shared user database.",
             "header": [
               {
                 "key": "Authorization",
@@ -2490,7 +2536,7 @@
                 "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/schedules/{{targetScheduleId}}",
+            "url": "{{baseUrl}}/schedules",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -2500,15 +2546,6 @@
                   "type": "string"
                 }
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"{{directTargetOriginalStatus}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -2517,7 +2554,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get(\"directTargetOriginalStatus\")) { pm.execution.skipRequest(); }"
+                  "pm.environment.set(\"chatIsolationReady\", false);",
+                  "pm.environment.set(\"chatIsolationCaptureReady\", false);"
                 ]
               }
             },
@@ -2526,9 +2564,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const body = pm.response.json();",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"direct target is restored for the direct flow\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"targetScheduleId\")); pm.expect(body.status).to.eql(pm.environment.get(\"directTargetOriginalStatus\")); });"
+                  "const captured = JSON.parse(pm.environment.get(\"chatIsolationSchedules\") || \"[]\");",
+                  "if (!Array.isArray(captured)) throw new Error(\"Invalid cleanup snapshot; preserve the environment for recovery\");",
+                  "let remaining = captured.slice();",
+                  "const baseUrl = pm.environment.get(\"baseUrl\");",
+                  "const headers = { Authorization: \"Bearer \" + pm.environment.get(\"adminAccessToken\"), \"Content-Type\": \"application/json\" };",
+                  "function restoreNext(index) {",
+                  "  if (index === captured.length) {",
+                  "    pm.test(\"all captured schedule statuses restored\", function () { pm.expect(remaining, \"Retry cleanup with this environment for outstanding entries\").to.have.length(0); });",
+                  "    return;",
+                  "  }",
+                  "  const entry = captured[index];",
+                  "  pm.sendRequest({ url: baseUrl + \"/schedules/\" + entry.id, method: \"PATCH\", header: headers, body: { mode: \"raw\", raw: JSON.stringify({ status: entry.status }) } }, function (error, response) {",
+                  "    let body; try { body = response && response.json(); } catch (_) {}",
+                  "    const ok = !error && response && response.code === 200 && body && body.id === entry.id && body.status === entry.status;",
+                  "    pm.test(\"restored captured schedule \" + entry.id, function () { pm.expect(error).to.not.be.ok; pm.expect(response && response.code).to.eql(200); pm.expect(body && body.id).to.eql(entry.id); pm.expect(body && body.status).to.eql(entry.status); });",
+                  "    if (ok) { remaining = remaining.filter(function (item) { return item.id !== entry.id; }); pm.environment.set(\"chatIsolationSchedules\", JSON.stringify(remaining)); }",
+                  "    restoreNext(index + 1);",
+                  "  });",
+                  "}",
+                  "restoreNext(0);"
                 ]
               }
             }
@@ -2747,9 +2803,9 @@
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const body = pm.response.json();",
                   "pm.test(\"pending response is an array\", function () { pm.expect(body).to.be.an(\"array\"); });",
-                  "const request = body.find(function (item) { return item.id === pm.environment.get(\"chatRescheduleId\"); });",
-                  "pm.test(\"pending request has the documented exact fields\", function () { pm.expect(request).to.not.be.undefined; pm.expect(Object.keys(request).sort()).to.eql([\"adminNote\", \"bookingId\", \"chatSessionId\", \"createdAt\", \"customerMessage\", \"fromScheduleId\", \"id\", \"memberId\", \"reviewedAt\", \"reviewedBy\", \"status\", \"toScheduleId\", \"updatedAt\"]); });",
-                  "pm.test(\"chat request is listed as pending\", function () { pm.expect(request.status).to.eql(\"pending\"); pm.expect(request.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(request.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(request.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(request.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
+                  "const chatPendingRequest = body.find(function (item) { return item.id === pm.environment.get(\"chatRescheduleId\"); });",
+                  "pm.test(\"pending request has the documented exact fields\", function () { pm.expect(chatPendingRequest).to.not.be.undefined; pm.expect(Object.keys(chatPendingRequest).sort()).to.eql([\"adminNote\", \"bookingId\", \"chatSessionId\", \"createdAt\", \"customerMessage\", \"fromScheduleId\", \"id\", \"memberId\", \"reviewedAt\", \"reviewedBy\", \"status\", \"toScheduleId\", \"updatedAt\"]); });",
+                  "pm.test(\"chat request is listed as pending\", function () { pm.expect(chatPendingRequest.status).to.eql(\"pending\"); pm.expect(chatPendingRequest.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(chatPendingRequest.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(chatPendingRequest.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(chatPendingRequest.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
                 ]
               }
             }
