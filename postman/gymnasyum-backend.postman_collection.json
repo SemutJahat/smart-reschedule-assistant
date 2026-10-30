@@ -2103,6 +2103,619 @@
       ]
     },
     {
+      "name": "Chatbot Reschedule",
+      "description": "Dedicated chatbot reschedule flow. Run after the subscription/package setup. It creates separate schedules and a separate booking so it cannot conflict with the direct Reschedule Requests flow. Configure the server process with GEN_AI_MODE=stub for deterministic recommendations; the Postman environment value documents that setting only.",
+      "item": [
+        {
+          "name": "Admin create chat source schedule",
+          "request": {
+            "method": "POST",
+            "description": "Creates the dedicated chatbot source schedule. Expected: HTTP 200; saves chatSourceScheduleId. Requires server GEN_AI_MODE=stub for the deterministic message assertion.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/schedules",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Chatbot Source\",\n  \"coachId\": \"{{coachId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"2030-06-02T09:00:00.000Z\",\n  \"endsAt\": \"2030-06-02T10:00:00.000Z\",\n  \"capacity\": 1,\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"chat source schedule id exists\", function () { pm.expect(body.id).to.match(/^[0-9a-f-]{36}$/i); });",
+                  "pm.environment.set(\"chatSourceScheduleId\", body.id);",
+                  "pm.expect(body.serviceId).to.eql(pm.environment.get(\"serviceId\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin create chat target schedule",
+          "request": {
+            "method": "POST",
+            "description": "Creates the dedicated chatbot target schedule. Expected: HTTP 200; saves chatTargetScheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/schedules",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman Chatbot Target\",\n  \"coachId\": \"{{coachId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"2030-06-02T11:00:00.000Z\",\n  \"endsAt\": \"2030-06-02T12:00:00.000Z\",\n  \"capacity\": 5,\n  \"status\": \"available\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"chat target schedule id exists\", function () { pm.expect(body.id).to.match(/^[0-9a-f-]{36}$/i); });",
+                  "pm.environment.set(\"chatTargetScheduleId\", body.id);",
+                  "pm.expect(body.id).to.not.eql(pm.environment.get(\"chatSourceScheduleId\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer create chat booking",
+          "request": {
+            "method": "POST",
+            "description": "Books the dedicated chatbot source schedule using the existing active subscription/package setup. Expected: HTTP 200; saves chatBookingId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/bookings",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"{{chatSourceScheduleId}}\",\n  \"subscriptionId\": \"{{subscriptionId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set(\"chatBookingId\", body.id);",
+                  "pm.test(\"chat booking uses the dedicated source\", function () { pm.expect(body.scheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); });",
+                  "pm.test(\"chat booking is booked\", function () { pm.expect(body.status).to.eql(\"booked\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer create chat session",
+          "request": {
+            "method": "POST",
+            "description": "Starts a chatbot session for the dedicated booking. Expected: HTTP 201; saves chatSessionId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{chatBookingId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set(\"chatSessionId\", body.id);",
+                  "pm.test(\"chat session uses the dedicated booking\", function () { pm.expect(body.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); });",
+                  "pm.expect(body.status).to.eql(\"active\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer send chat message",
+          "request": {
+            "method": "POST",
+            "description": "Sends a reschedule message. Expected with GEN_AI_MODE=stub: HTTP 200, exact Reschedule intent, awaiting_confirmation, and the dedicated target in recommendedSchedules.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions/{{chatSessionId}}/messages",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Please move this booking to the chatbot target schedule.\",\n  \"clientMessageId\": \"{{clientMessageId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"turn has the exact top-level fields\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"analysis\", \"assistantMessage\", \"session\", \"userMessage\"]); });",
+                  "pm.environment.set(\"chatMessageId\", body.userMessage.id);",
+                  "pm.test(\"intent is exactly Reschedule\", function () { pm.expect(body.analysis.intent).to.eql(\"Reschedule\"); });",
+                  "pm.test(\"session is exactly awaiting_confirmation\", function () { pm.expect(body.session.status).to.eql(\"awaiting_confirmation\"); });",
+                  "pm.test(\"recommendedSchedules contains exactly the dedicated target\", function () { pm.expect(body.analysis.recommendedSchedules).to.have.length(1); pm.expect(body.analysis.recommendedSchedules[0].id).to.eql(pm.environment.get(\"chatTargetScheduleId\")); pm.expect(Object.keys(body.analysis.recommendedSchedules[0]).sort()).to.eql([\"endsAt\", \"id\", \"startsAt\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer confirm mismatch rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative confirmation guard. Confirms the source instead of the proposed target; expected HTTP 409 with error code CONFIRMATION_MISMATCH. This does not alter the happy-path session.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions/{{chatSessionId}}/confirm",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"{{chatSourceScheduleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 409\", function () { pm.response.to.have.status(409); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is CONFIRMATION_MISMATCH\", function () { pm.expect(body.error.code).to.eql(\"CONFIRMATION_MISMATCH\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer confirm proposed schedule",
+          "request": {
+            "method": "POST",
+            "description": "Confirms the chatbot's proposed target schedule. Expected: HTTP 201; exact submitted response shape and a pending chat reschedule request; saves chatRescheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions/{{chatSessionId}}/confirm",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduleId\": \"{{chatTargetScheduleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"confirmation has the exact top-level fields\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"message\", \"rescheduleRequest\", \"sessionId\", \"status\"]); });",
+                  "pm.expect(body.sessionId).to.eql(pm.environment.get(\"chatSessionId\"));",
+                  "pm.expect(body.status).to.eql(\"submitted\");",
+                  "pm.environment.set(\"chatRescheduleId\", body.rescheduleRequest.id);",
+                  "pm.test(\"pending request has the exact fields and dedicated tuple\", function () { pm.expect(Object.keys(body.rescheduleRequest).sort()).to.eql([\"bookingId\", \"chatSessionId\", \"fromScheduleId\", \"id\", \"status\", \"toScheduleId\"]); pm.expect(body.rescheduleRequest.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(body.rescheduleRequest.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(body.rescheduleRequest.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(body.rescheduleRequest.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); pm.expect(body.rescheduleRequest.status).to.eql(\"pending\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer get chat session",
+          "request": {
+            "method": "GET",
+            "description": "Reads the submitted chatbot session. Expected: HTTP 200 with the exact session response fields.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions/{{chatSessionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"session fields are exact\", function () { pm.expect(Object.keys(body).sort()).to.eql([\"bookingId\", \"createdAt\", \"currentIntent\", \"id\", \"proposedScheduleId\", \"status\", \"updatedAt\"]); });",
+                  "pm.expect(body.id).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(body.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(body.status).to.eql(\"submitted\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer get chat messages",
+          "request": {
+            "method": "GET",
+            "description": "Reads chatbot messages. Expected: HTTP 200 and the captured user message remains present.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/chat/sessions/{{chatSessionId}}/messages",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"messages are an array\", function () { pm.expect(body).to.be.an(\"array\"); });",
+                  "pm.test(\"captured chat message is present\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"chatMessageId\"); })).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list pending requests",
+          "request": {
+            "method": "GET",
+            "description": "Lists pending requests and verifies the chatbot request tuple is pending. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/reschedule-requests?status=pending",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const request = body.find(function (item) { return item.id === pm.environment.get(\"chatRescheduleId\"); });",
+                  "pm.test(\"chat request is listed as pending\", function () { pm.expect(request).to.not.be.undefined; pm.expect(request.status).to.eql(\"pending\"); pm.expect(request.chatSessionId).to.eql(pm.environment.get(\"chatSessionId\")); pm.expect(request.bookingId).to.eql(pm.environment.get(\"chatBookingId\")); pm.expect(request.fromScheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(request.toScheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer verify chat booking remains on source",
+          "request": {
+            "method": "GET",
+            "description": "Verifies the booking has not moved before admin review. Expected: HTTP 200 and chatBookingId remains on chatSourceScheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/bookings/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const booking = pm.response.json().find(function (item) { return item.id === pm.environment.get(\"chatBookingId\"); });",
+                  "pm.test(\"chat booking exists before approval\", function () { pm.expect(booking).to.not.be.undefined; });",
+                  "pm.test(\"chat booking is still on the source\", function () { pm.expect(booking.scheduleId).to.eql(pm.environment.get(\"chatSourceScheduleId\")); pm.expect(booking.status).to.eql(\"booked\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin approve chat request",
+          "request": {
+            "method": "PATCH",
+            "description": "Approves the chatbot request. Expected: HTTP 200 with approved status; the subsequent booking read verifies the booking moved to chatTargetScheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/reschedule-requests/{{chatRescheduleId}}/review",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"adminNote\": \"Approved by chatbot Postman flow\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.id).to.eql(pm.environment.get(\"chatRescheduleId\"));",
+                  "pm.test(\"chat request is approved\", function () { pm.expect(body.status).to.eql(\"approved\"); });",
+                  "pm.test(\"reviewer and timestamp exist\", function () { pm.expect(body.reviewedBy).to.not.be.undefined; pm.expect(body.reviewedAt).to.not.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer verify chat booking after approval",
+          "request": {
+            "method": "GET",
+            "description": "Optional post-approval verification. Expected: HTTP 200 and the dedicated booking is now on chatTargetScheduleId.",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/bookings/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const booking = pm.response.json().find(function (item) { return item.id === pm.environment.get(\"chatBookingId\"); });",
+                  "pm.test(\"approved chat booking moved to target\", function () { pm.expect(booking).to.not.be.undefined; pm.expect(booking.scheduleId).to.eql(pm.environment.get(\"chatTargetScheduleId\")); pm.expect(booking.status).to.eql(\"booked\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Reschedule Requests",
       "item": [
         {
