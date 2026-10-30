@@ -16,7 +16,7 @@ import type {
   ChatIntent,
   GenAiAnalysis,
 } from "./schema";
-import { CHAT_INTENTS } from "./schema";
+import { CHAT_INTENTS, isChatUuid } from "./schema";
 import type { ChatRescheduleUnitOfWork, ChatTransactionCoordinator } from "./unit-of-work";
 
 export interface ChatServiceDependencies {
@@ -38,6 +38,7 @@ export interface ChatServiceContractDependencies {
   coordinator: { transaction<T>(fn: (tx: { chat: ChatRepository; reschedule: { insertRequest(input: { bookingId: string; memberId: string; chatSessionId: string | null; fromScheduleId: string; toScheduleId: string; customerMessage: string }): Promise<RescheduleRequestRecord> } }) => Promise<T>): Promise<T> };
   reschedule: { insertRequest(input: { bookingId: string; memberId: string; chatSessionId: string | null; fromScheduleId: string; toScheduleId: string; customerMessage: string }): Promise<RescheduleRequestRecord> };
   member: Pick<MemberRecord, "id" | "userId" | "status">;
+  members?: Array<Pick<MemberRecord, "id" | "userId" | "status">>;
   eligibility: { subscriptionStatus: SubscriptionRecord["status"]; subscriptionExpiresAt: Date; remainingQuota: number };
   booking: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status">;
   sourceSchedule: Pick<ScheduleRecord, "id" | "serviceId">;
@@ -154,9 +155,9 @@ function validateAnalysis(value: unknown, session: ChatSessionRecord, candidateI
   if (!isRecord(value)) throw invalidResponse();
   const keys = ["intent", "confidence", "extracted", "recommendedScheduleIds", "reply", "nextState", "model", "modelVersion"];
   if (Object.keys(value).some((key) => !keys.includes(key))) throw invalidResponse();
-  if (!isIntent(value.intent) || typeof value.confidence !== "number" || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1 || !isRecord(value.extracted) || !Array.isArray(value.recommendedScheduleIds) || value.recommendedScheduleIds.some((id) => typeof id !== "string") || typeof value.reply !== "string" || value.reply.trim() === "" || value.reply.length > MAX_GEN_AI_REPLY_LENGTH || typeof value.model !== "string" || value.model.trim() === "" || typeof value.modelVersion !== "string" || value.modelVersion.trim() === "" || !isNextState(value.nextState)) throw invalidResponse();
+  if (!isIntent(value.intent) || typeof value.confidence !== "number" || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 1 || !isRecord(value.extracted) || !Array.isArray(value.recommendedScheduleIds) || value.recommendedScheduleIds.some((id) => !isChatUuid(id)) || typeof value.reply !== "string" || value.reply.trim() === "" || value.reply.length > MAX_GEN_AI_REPLY_LENGTH || typeof value.model !== "string" || value.model.trim() === "" || typeof value.modelVersion !== "string" || value.modelVersion.trim() === "" || !isNextState(value.nextState)) throw invalidResponse();
   const recommendations = value.recommendedScheduleIds as string[];
-  if (value.nextState === "submitted" || (value.nextState === "awaiting_confirmation" && recommendations.length === 0) || (value.nextState === "active" && recommendations.length > 0) || recommendations.some((id) => !candidateIds.has(id))) throw invalidResponse();
+  if (value.nextState === "submitted" || (value.nextState === "awaiting_confirmation" && (recommendations.length === 0 || value.intent !== "Reschedule")) || (value.nextState === "active" && recommendations.length > 0) || recommendations.some((id) => !candidateIds.has(id)) || (recommendations.length > 0 && value.intent !== "Reschedule")) throw invalidResponse();
   const transitions: Record<ChatSessionStatus, ChatAnalysisNextState[]> = { active: ["active", "awaiting_confirmation"], awaiting_confirmation: ["active", "awaiting_confirmation"], submitted: [], closed: [] };
   if (!transitions[session.status].includes(value.nextState)) throw invalidResponse();
   return { intent: value.intent, confidence: value.confidence, extracted: value.extracted, recommendedScheduleIds: recommendations, reply: value.reply, nextState: value.nextState, model: value.model, modelVersion: value.modelVersion };
@@ -194,7 +195,7 @@ export class ChatService {
       } as unknown as BookingRepository;
       const contractPayment = { findSubscription: async () => this.subscriptionFromContract(dependencies) } as unknown as PaymentRepository;
       this.dependencies = {
-        auth: { findMemberByUserId: async (userId: string) => userId === dependencies.member.userId ? dependencies.member : null } as unknown as AuthRepository,
+        auth: { findMemberByUserId: async (userId: string) => (dependencies.members ?? [dependencies.member]).find((candidate) => candidate.userId === userId) ?? null } as unknown as AuthRepository,
         catalog: { findSchedule: async (id: string) => id === dependencies.sourceSchedule.id ? this.scheduleFromPartial(dependencies.sourceSchedule) : null, listSchedules: async () => dependencies.candidates.map((item) => this.scheduleFromPartial(item)), countBooked: async (id: string) => dependencies.candidates.find((item) => item.id === id)?.booked ?? 0 } as unknown as CatalogRepository,
         booking: contractBooking,
         payment: contractPayment,

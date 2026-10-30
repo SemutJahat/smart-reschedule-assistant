@@ -11,6 +11,10 @@ export const CHAT_INTENTS = [
   "Other",
 ] as const;
 
+/** UUIDs accepted for schedule identifiers at the chat boundary. */
+export const CHAT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const isChatUuid = (value: unknown): value is string => typeof value === "string" && CHAT_UUID_PATTERN.test(value);
+
 export type ChatIntent = (typeof CHAT_INTENTS)[number];
 
 export const CHAT_SESSION_STATUSES = [
