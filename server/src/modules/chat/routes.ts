@@ -27,9 +27,15 @@ const sessionResponse = t.Object({
   status: sessionStatus,
   currentIntent: t.Union([chatIntent, t.Null()]),
   proposedScheduleId: t.Union([uuid, t.Null()]),
-  confirmedAt: t.Union([dateTime, t.Null()]),
   createdAt: dateTime,
   updatedAt: dateTime,
+});
+
+const turnSessionResponse = t.Object({
+  id: uuid,
+  status: sessionStatus,
+  currentIntent: t.Union([chatIntent, t.Null()]),
+  proposedScheduleId: t.Union([uuid, t.Null()]),
 });
 
 const messageResponse = t.Object({
@@ -49,7 +55,7 @@ const analysisResponse = t.Object({
 });
 
 const turnResponse = t.Object({
-  session: sessionResponse,
+  session: turnSessionResponse,
   userMessage: messageResponse,
   assistantMessage: messageResponse,
   analysis: analysisResponse,

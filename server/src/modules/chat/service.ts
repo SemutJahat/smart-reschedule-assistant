@@ -62,9 +62,15 @@ export interface SerializedChatSession {
   status: ChatSessionStatus;
   currentIntent: ChatIntent | null;
   proposedScheduleId: string | null;
-  confirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SerializedChatTurnSession {
+  id: string;
+  status: ChatSessionStatus;
+  currentIntent: ChatIntent | null;
+  proposedScheduleId: string | null;
 }
 
 export interface SerializedChatMessage {
@@ -86,7 +92,7 @@ export interface SerializedChatAnalysis {
 }
 
 export interface ChatTurn {
-  session: SerializedChatSession;
+  session: SerializedChatTurnSession;
   userMessage: SerializedChatMessage;
   assistantMessage: SerializedChatMessage;
   analysis: SerializedChatAnalysis;
@@ -146,10 +152,13 @@ function serializeSession(item: ChatSessionRecord): SerializedChatSession {
     status: item.status,
     currentIntent: item.currentIntent,
     proposedScheduleId: item.proposedScheduleId,
-    confirmedAt: item.confirmedAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
+}
+
+function serializeTurnSession(item: ChatSessionRecord): SerializedChatTurnSession {
+  return { id: item.id, status: item.status, currentIntent: item.currentIntent, proposedScheduleId: item.proposedScheduleId };
 }
 
 function serializeMessage(item: ChatMessageRecord): SerializedChatMessage {
@@ -368,7 +377,7 @@ export class ChatService {
     const session = await this.dependencies.chat.findSession(sessionId);
     if (!session) return null;
     const recommendedSchedules = await serializeRecommendedSchedules(analysis.recommendedScheduleIds, this.dependencies.catalog);
-    return { session: serializeSession(session), userMessage: serializeMessage(userMessage), assistantMessage: serializeMessage(assistant), analysis: serializeAnalysis(analysis, recommendedSchedules) };
+    return { session: serializeTurnSession(session), userMessage: serializeMessage(userMessage), assistantMessage: serializeMessage(assistant), analysis: serializeAnalysis(analysis, recommendedSchedules) };
   }
 
   private async persistFailure(sessionId: string, messageId: string, errorCode: "AI_INVALID_RESPONSE" | "AI_SERVICE_UNAVAILABLE", origin: ChatSessionRecord): Promise<void> {
@@ -454,7 +463,7 @@ export class ChatService {
       throw mapPersistenceError(error) ?? (isAppError(error) ? error : internal());
     }
     const recommendedSchedules = await serializeRecommendedSchedules(analysis.recommendedScheduleIds, this.dependencies.catalog);
-    return { session: serializeSession(persisted.updated), userMessage: serializeMessage(message), assistantMessage: serializeMessage(persisted.assistant), analysis: serializeAnalysis(persisted.storedAnalysis, recommendedSchedules) };
+    return { session: serializeTurnSession(persisted.updated), userMessage: serializeMessage(message), assistantMessage: serializeMessage(persisted.assistant), analysis: serializeAnalysis(persisted.storedAnalysis, recommendedSchedules) };
   }
 
   async confirmSchedule(user: AuthUser, sessionId: string, scheduleId: string): Promise<ConfirmationResult> {

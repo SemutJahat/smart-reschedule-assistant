@@ -52,11 +52,13 @@ test("chat routes create, message, confirm, and read a pending reschedule", asyn
   const created = await app.handle(new Request("http://localhost/chat/sessions", { method: "POST", ...json({ bookingId }, customerToken) }));
   expect(created.status).toBe(201);
   const session = await created.json() as { id: string };
+  expect(Object.keys(session).sort()).toEqual(["bookingId", "createdAt", "currentIntent", "id", "proposedScheduleId", "status", "updatedAt"]);
 
   const message = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { method: "POST", ...json({ message: "Please move me", clientMessageId: id() }, customerToken) }));
   expect(message.status).toBe(200);
   const turn = await message.clone().json();
   expect(turn.session.status).toBe("awaiting_confirmation");
+  expect(Object.keys(turn.session).sort()).toEqual(["currentIntent", "id", "proposedScheduleId", "status"]);
   expect(turn).toHaveProperty("userMessage");
   expect(turn).not.toHaveProperty("message");
   expect(turn.analysis).toHaveProperty("recommendedSchedules");
@@ -75,7 +77,9 @@ test("chat routes create, message, confirm, and read a pending reschedule", asyn
   expect(Object.keys(confirmation).sort()).toEqual(["message", "rescheduleRequest", "sessionId", "status"]);
   expect(Object.keys(confirmation.rescheduleRequest).sort()).toEqual(["bookingId", "chatSessionId", "fromScheduleId", "id", "status", "toScheduleId"]);
 
-  expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);
+  const read = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}`, { headers: { authorization: `Bearer ${customerToken}` } }));
+  expect(read.status).toBe(200);
+  expect(Object.keys(await read.json()).sort()).toEqual(["bookingId", "createdAt", "currentIntent", "id", "proposedScheduleId", "status", "updatedAt"]);
   expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);
 });
 
