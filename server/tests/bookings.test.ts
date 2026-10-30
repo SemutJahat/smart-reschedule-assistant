@@ -3,6 +3,9 @@ import { InMemoryAuthRepository } from "../src/modules/auth/repository";
 import { InMemoryCatalogRepository } from "../src/modules/coaches/schema";
 import { InMemoryPaymentRepository } from "../src/modules/payments/repository";
 import { InMemoryBookingRepository } from "../src/modules/bookings/repository";
+import { InMemoryChatRepository } from "../src/modules/chat/repository";
+import { createInMemoryChatTransactionCoordinator } from "../src/modules/chat/unit-of-work";
+import { InMemoryRescheduleRepository } from "../src/modules/reschedules/repository";
 import { bookingDuplicateConflict } from "../src/modules/bookings/service";
 import { createTestApp } from "./helpers/app";
 
@@ -111,7 +114,10 @@ test("failed booking transaction rolls back its writes", async () => {
     }
   }
   const failingRepository = new FailingBookingRepository(catalog, payments, catalog.bookings);
-  const failingApp = createTestApp({}, auth, catalog, payments, failingRepository);
+  const failingChat = new InMemoryChatRepository();
+  const failingReschedules = new InMemoryRescheduleRepository(failingRepository, catalog);
+  const failingCoordinator = createInMemoryChatTransactionCoordinator({ chat: failingChat, reschedule: failingReschedules, booking: failingRepository, payment: payments, catalog });
+  const failingApp = createTestApp({}, auth, catalog, payments, failingRepository, failingReschedules, failingChat, failingCoordinator);
   const failing = await failingApp.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId }, customerToken) }));
   expect(failing.status).toBe(500);
   expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(before);

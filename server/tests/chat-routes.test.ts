@@ -55,11 +55,25 @@ test("chat routes create, message, confirm, and read a pending reschedule", asyn
 
   const message = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { method: "POST", ...json({ message: "Please move me", clientMessageId: id() }, customerToken) }));
   expect(message.status).toBe(200);
-  expect((await message.clone().json()).session.status).toBe("awaiting_confirmation");
+  const turn = await message.clone().json();
+  expect(turn.session.status).toBe("awaiting_confirmation");
+  expect(turn).toHaveProperty("userMessage");
+  expect(turn).not.toHaveProperty("message");
+  expect(turn.analysis).toHaveProperty("extracted");
+  expect(turn.analysis).toHaveProperty("recommendedSchedules");
+  expect(turn.analysis).not.toHaveProperty("extractedData");
+  expect(turn.analysis).not.toHaveProperty("recommendedScheduleIds");
+  expect(turn.analysis).not.toHaveProperty("messageId");
+  expect(turn.analysis).not.toHaveProperty("status");
+  expect(turn.analysis).not.toHaveProperty("errorCode");
 
   const confirmed = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/confirm`, { method: "POST", ...json({ scheduleId: targetScheduleId }, customerToken) }));
   expect(confirmed.status).toBe(201);
-  expect((await confirmed.clone().json()).request.status).toBe("pending");
+  const confirmation = await confirmed.clone().json();
+  expect(confirmation).toMatchObject({ sessionId: session.id, status: "submitted", rescheduleRequest: { status: "pending" } });
+  expect(confirmation).toHaveProperty("message");
+  expect(confirmation).not.toHaveProperty("booking");
+  expect(confirmation).not.toHaveProperty("request");
 
   expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);
   expect((await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);

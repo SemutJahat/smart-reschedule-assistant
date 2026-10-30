@@ -193,8 +193,8 @@ test("a valid Reschedule proposal moves the session to awaiting_confirmation", a
   expect(turn.session.proposedScheduleId).toBe(candidateScheduleId);
   expect(turn.session).not.toHaveProperty("memberId");
   expect(turn.session).not.toHaveProperty("sourceScheduleId");
-  expect(turn.message).not.toHaveProperty("sessionId");
-  expect(turn.message).not.toHaveProperty("clientMessageId");
+  expect(turn.userMessage).not.toHaveProperty("sessionId");
+  expect(turn.userMessage).not.toHaveProperty("clientMessageId");
 });
 
 test("a recommendation outside the backend candidate set is rejected", async () => {

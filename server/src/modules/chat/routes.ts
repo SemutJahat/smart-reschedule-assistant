@@ -2,7 +2,7 @@ import { t, type AnyElysia } from "elysia";
 import { requireAuth, requireRole } from "../../plugins/auth";
 import type { AuthRepository } from "../auth/schema";
 import { MAX_GEN_AI_REPLY_LENGTH } from "./client";
-import type { ChatService } from "./service";
+import { toConfirmationResponse, type ChatService } from "./service";
 
 const dateTime = t.String({ format: "date-time" });
 const uuid = t.String({ format: "uuid" });
@@ -43,8 +43,15 @@ const messageResponse = t.Object({
 const analysisResponse = t.Object({
   intent: chatIntent,
   confidence: t.Number({ minimum: 0, maximum: 1 }),
-  extractedData: t.Record(t.String(), t.Unknown()),
-  recommendedScheduleIds: t.Array(uuid),
+  extracted: t.Record(t.String(), t.Unknown()),
+  recommendedSchedules: t.Array(t.Object({
+    id: uuid,
+    title: t.String(),
+    serviceId: uuid,
+    startsAt: dateTime,
+    endsAt: dateTime,
+    coachId: uuid,
+  })),
   reply: t.String({ minLength: 1, maxLength: MAX_GEN_AI_REPLY_LENGTH }),
   nextState: t.Union([t.Literal("active"), t.Literal("awaiting_confirmation"), t.Literal("submitted")]),
   model: t.String({ minLength: 1 }),
@@ -54,19 +61,9 @@ const analysisResponse = t.Object({
 
 const turnResponse = t.Object({
   session: sessionResponse,
-  message: messageResponse,
+  userMessage: messageResponse,
   assistantMessage: messageResponse,
   analysis: analysisResponse,
-});
-
-const bookingResponse = t.Object({
-  id: uuid,
-  scheduleId: uuid,
-  status: t.Union([t.Literal("booked"), t.Literal("cancelled"), t.Literal("attended"), t.Literal("no_show")]),
-  bookedAt: dateTime,
-  cancelledAt: t.Union([dateTime, t.Null()]),
-  createdAt: dateTime,
-  updatedAt: dateTime,
 });
 
 const requestResponse = t.Object({
@@ -88,8 +85,10 @@ const requestResponse = t.Object({
 });
 
 const confirmationResponse = t.Object({
-  request: requestResponse,
-  booking: bookingResponse,
+  sessionId: uuid,
+  status: t.Literal("submitted"),
+  rescheduleRequest: requestResponse,
+  message: t.String({ minLength: 1 }),
 });
 
 const sessionParams = t.Object({ id: uuid });
@@ -112,7 +111,7 @@ export function chatRoutes(app: AnyElysia, service: ChatService, auth: AuthRepos
       body: sendMessageBody,
       response: turnResponse,
     })
-    .post("/chat/sessions/:id/confirm", async (context) => { context.set.status = 201; return service.confirmSchedule(await requireAuth({ jwt: context.jwt, headers: context.headers }, auth), context.params.id, context.body.scheduleId); }, {
+    .post("/chat/sessions/:id/confirm", async (context) => { context.set.status = 201; const result = await service.confirmSchedule(await requireAuth({ jwt: context.jwt, headers: context.headers }, auth), context.params.id, context.body.scheduleId); return toConfirmationResponse(result, context.params.id); }, {
       beforeHandle: async (context) => { await requireRole({ jwt: context.jwt, headers: context.headers }, "customer", auth); },
       params: sessionParams,
       body: confirmBody,

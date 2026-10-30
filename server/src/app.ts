@@ -39,7 +39,7 @@ import { createChatRepository, InMemoryChatRepository } from "./modules/chat/rep
 import type { ChatRepository } from "./modules/chat/schema";
 import { createChatTransactionCoordinator, createInMemoryChatTransactionCoordinator } from "./modules/chat/unit-of-work";
 import type { ChatTransactionCoordinator } from "./modules/chat/unit-of-work";
-import { createGenAiClient, StubGenAiClient, type GenAiClient } from "./modules/chat/client";
+import { createGenAiClient, type GenAiClient } from "./modules/chat/client";
 
 const healthResponse = t.Object({
   status: t.Literal("ok"),
@@ -86,7 +86,7 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
       && catalogRepository instanceof InMemoryCatalogRepository
       ? createInMemoryChatTransactionCoordinator({ chat: chatRepository, reschedule: rescheduleRepository, booking: bookingRepository, payment: paymentRepository, catalog: catalogRepository })
       : (() => { throw new Error("An in-memory chat transaction coordinator is required when custom repositories are configured"); })());
-  const genAiClient = options.genAiClient ?? (config.nodeEnv === "test" ? new StubGenAiClient() : createGenAiClient(config));
+  const genAiClient = options.genAiClient ?? createGenAiClient(config);
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
