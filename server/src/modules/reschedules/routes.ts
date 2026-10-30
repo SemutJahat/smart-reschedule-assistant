@@ -5,7 +5,7 @@ import { RescheduleService } from "./service";
 
 const status = t.Union([t.Literal("pending"), t.Literal("held"), t.Literal("approved"), t.Literal("rejected"), t.Literal("cancelled")]);
 const requestBody = t.Object({ bookingId: t.String({ format: "uuid" }), requestedScheduleId: t.String({ format: "uuid" }), customerMessage: t.String({ minLength: 1 }) });
-const response = t.Object({ id: t.String(), bookingId: t.String(), memberId: t.String(), fromScheduleId: t.String(), toScheduleId: t.String(), customerMessage: t.Union([t.String(), t.Null()]), adminNote: t.Union([t.String(), t.Null()]), status, reviewedBy: t.Union([t.String(), t.Null()]), reviewedAt: t.Union([t.String(), t.Null()]), createdAt: t.String(), updatedAt: t.String() });
+const response = t.Object({ id: t.String(), bookingId: t.String(), memberId: t.String(), chatSessionId: t.Union([t.String(), t.Null()]), fromScheduleId: t.String(), toScheduleId: t.String(), customerMessage: t.Union([t.String(), t.Null()]), adminNote: t.Union([t.String(), t.Null()]), status, reviewedBy: t.Union([t.String(), t.Null()]), reviewedAt: t.Union([t.String(), t.Null()]), createdAt: t.String(), updatedAt: t.String() });
 
 export function rescheduleRoutes(app: AnyElysia, service: RescheduleService, auth: AuthRepository) {
   return app

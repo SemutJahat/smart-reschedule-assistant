@@ -47,6 +47,7 @@ test("creates requests only for the owner and isolates customer lists", async ()
   expect((await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "Please move me" }, otherToken) }))).status).toBe(403);
   const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "Please move me" }, customerToken) }));
   expect(created.status).toBe(200);
+  expect((await created.clone().json()).chatSessionId).toBeNull();
   expect((await app.handle(new Request("http://localhost/reschedule-requests/me", { headers: { authorization: `Bearer ${otherToken}` } }))).json()).resolves.toHaveLength(0);
   expect((await app.handle(new Request("http://localhost/reschedule-requests", { headers: { authorization: `Bearer ${adminToken}` } }))).status).toBe(200);
 });
@@ -104,7 +105,7 @@ test("approved request moves booking, updates both schedule statuses, and record
   const request = await created.json() as { id: string };
   const reviewed = await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "approved", adminNote: "Approved" }, adminToken) }));
   const body = await reviewed.json() as { status: string; reviewedBy: string; adminNote: string };
-  expect(reviewed.status).toBe(200); expect(body.status).toBe("approved"); expect(body.reviewedBy).toBeDefined(); expect(body.adminNote).toBe("Approved");
+  expect(reviewed.status).toBe(200); expect(body.status).toBe("approved"); expect(body.reviewedBy).toBeDefined(); expect(body.adminNote).toBe("Approved"); expect((body as { chatSessionId?: string | null }).chatSessionId).toBeNull();
   expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(targetId);
   expect(await catalog.countBooked(sourceId)).toBe(0); expect(await catalog.countBooked(targetId)).toBe(1);
 });
