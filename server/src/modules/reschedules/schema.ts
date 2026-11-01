@@ -7,6 +7,7 @@ export interface RescheduleRequestRecord {
   id: string;
   bookingId: string;
   memberId: string;
+  chatSessionId: string | null;
   fromScheduleId: string;
   toScheduleId: string;
   customerMessage: string | null;
@@ -21,10 +22,15 @@ export interface RescheduleRequestRecord {
 export interface NewRescheduleRequest {
   bookingId: string;
   memberId: string;
+  chatSessionId: string | null;
   fromScheduleId: string;
   toScheduleId: string;
   customerMessage: string;
 }
+
+/** Legacy request input is normalized to chatSessionId: null by repositories. */
+export type LegacyRescheduleRequest = Omit<NewRescheduleRequest, "chatSessionId">;
+export type RescheduleRequestInput = NewRescheduleRequest | LegacyRescheduleRequest;
 
 export interface RescheduleRequestPatch {
   status?: RescheduleStatus;
@@ -43,7 +49,7 @@ export interface RescheduleRepository {
   transaction<T>(fn: (tx: RescheduleRepository) => Promise<T>): Promise<T>;
   findRequest(id: string, lock?: boolean): Promise<RescheduleRequestRecord | null>;
   listRequests(filters?: RescheduleFilters): Promise<RescheduleRequestRecord[]>;
-  insertRequest(input: NewRescheduleRequest): Promise<RescheduleRequestRecord>;
+  insertRequest(input: RescheduleRequestInput): Promise<RescheduleRequestRecord>;
   updateRequest(id: string, patch: RescheduleRequestPatch): Promise<RescheduleRequestRecord | null>;
   findBooking(id: string, lock?: boolean): Promise<BookingRecord | null>;
   updateBookingSchedule(id: string, scheduleId: string): Promise<BookingRecord | null>;

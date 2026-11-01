@@ -7,6 +7,11 @@ export interface AppConfig {
   jwtSecret: string;
   jwtRefreshSecret: string;
   databaseUrl?: string;
+  genAiBaseUrl?: string;
+  genAiApiKey?: string;
+  genAiModel: string;
+  genAiTimeoutMs: number;
+  genAiMode: "stub" | "http";
 }
 
 const defaultConfig: AppConfig = {
@@ -15,7 +20,12 @@ const defaultConfig: AppConfig = {
   corsOrigin: "http://localhost:5173",
   jwtSecret: "development-jwt-secret-change-me",
   jwtRefreshSecret: "development-refresh-secret-change-me",
+  genAiModel: "deterministic-stub",
+  genAiTimeoutMs: 10_000,
+  genAiMode: "stub",
 };
+
+const MAX_GEN_AI_TIMEOUT_MS = 120_000;
 
 function parsePort(value: string | undefined): number {
   if (value === undefined || value.trim() === "") return defaultConfig.port;
@@ -35,6 +45,44 @@ function parseNodeEnvironment(value: string | undefined): NodeEnvironment {
   }
 
   throw new Error("NODE_ENV must be development, test, or production");
+}
+
+function parseGenAiMode(value: string | undefined, nodeEnv: NodeEnvironment): "stub" | "http" {
+  const mode = value?.trim() || (nodeEnv === "production" ? "http" : "stub");
+  if (mode !== "stub" && mode !== "http") {
+    throw new Error("GEN_AI_MODE must be stub or http");
+  }
+  if (nodeEnv === "production" && mode !== "http") {
+    throw new Error("GEN_AI_MODE must be http in production");
+  }
+  if (nodeEnv !== "production" && mode !== "stub") {
+    throw new Error("GEN_AI_MODE must be stub outside production");
+  }
+  return mode;
+}
+
+function parseGenAiTimeout(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") return defaultConfig.genAiTimeoutMs;
+  const timeout = Number(value);
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > MAX_GEN_AI_TIMEOUT_MS) {
+    throw new Error(`GEN_AI_TIMEOUT_MS must be an integer between 1 and ${MAX_GEN_AI_TIMEOUT_MS}`);
+  }
+  return timeout;
+}
+
+function parseGenAiBaseUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("GEN_AI_BASE_URL must be a valid HTTP(S) URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("GEN_AI_BASE_URL must be a valid HTTP(S) URL");
+  }
+  return url.toString().replace(/\/+$/, "");
 }
 
 function parseCorsOrigin(value: string | undefined): string | string[] {
@@ -82,6 +130,14 @@ function validateCorsOrigin(origin: string): string {
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): AppConfig {
   const nodeEnv = parseNodeEnvironment(env.NODE_ENV);
+  const genAiMode = parseGenAiMode(env.GEN_AI_MODE, nodeEnv);
+  const genAiBaseUrl = parseGenAiBaseUrl(env.GEN_AI_BASE_URL);
+  const genAiApiKey = env.GEN_AI_API_KEY?.trim() || undefined;
+  const genAiModel = env.GEN_AI_MODEL?.trim() || defaultConfig.genAiModel;
+  const genAiTimeoutMs = parseGenAiTimeout(env.GEN_AI_TIMEOUT_MS);
+  if (genAiModel === "") throw new Error("GEN_AI_MODEL cannot be empty");
+  if (genAiMode === "http" && !genAiBaseUrl) throw new Error("GEN_AI_BASE_URL is required when GEN_AI_MODE is http");
+  if (genAiMode === "http" && !genAiApiKey) throw new Error("GEN_AI_API_KEY is required when GEN_AI_MODE is http");
   const jwtSecret = env.JWT_SECRET?.trim() || (nodeEnv === "production" ? "" : defaultConfig.jwtSecret);
   const jwtRefreshSecret = env.JWT_REFRESH_SECRET?.trim() || (nodeEnv === "production" ? "" : defaultConfig.jwtRefreshSecret);
   if (nodeEnv === "production" && (!jwtSecret || jwtSecret.length < 32 || !jwtRefreshSecret || jwtRefreshSecret.length < 32)) {
@@ -96,5 +152,10 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
     jwtSecret,
     jwtRefreshSecret,
     databaseUrl: env.DATABASE_URL?.trim() || undefined,
+    genAiBaseUrl,
+    genAiApiKey,
+    genAiModel,
+    genAiTimeoutMs,
+    genAiMode,
   };
 }

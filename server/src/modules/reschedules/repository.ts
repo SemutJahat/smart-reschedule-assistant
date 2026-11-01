@@ -5,7 +5,7 @@ import { createId } from "../../shared/ids";
 import type { CatalogRepository, ScheduleRecord } from "../coaches/schema";
 import type { BookingRecord, BookingRepository } from "../bookings/schema";
 import type {
-  NewRescheduleRequest,
+  RescheduleRequestInput,
   RescheduleFilters,
   RescheduleRepository,
   RescheduleRequestPatch,
@@ -43,8 +43,9 @@ export class DrizzleRescheduleRepository implements RescheduleRepository {
     return rows.map(requestRecord);
   }
 
-  async insertRequest(input: NewRescheduleRequest) {
-    const rows = await this.db.insert(rescheduleRequests).values({ ...input, customerMessage: input.customerMessage }).returning();
+  async insertRequest(input: RescheduleRequestInput) {
+    const chatSessionId = "chatSessionId" in input ? input.chatSessionId : null;
+    const rows = await this.db.insert(rescheduleRequests).values({ ...input, chatSessionId, customerMessage: input.customerMessage }).returning();
     return requestRecord(rows[0]);
   }
 
@@ -113,9 +114,10 @@ export class InMemoryRescheduleRepository implements RescheduleRepository {
 
   async findRequest(id: string) { const item = this.requests.find((value) => value.id === id); return item ? cloneRequest(item) : null; }
   async listRequests(filters: RescheduleFilters = {}) { return this.requests.filter((item) => (!filters.memberId || item.memberId === filters.memberId) && (!filters.status || item.status === filters.status)).map(cloneRequest); }
-  async insertRequest(input: NewRescheduleRequest) {
+  async insertRequest(input: RescheduleRequestInput) {
     const now = new Date();
-    const item: RescheduleRequestRecord = { ...input, id: createId(), customerMessage: input.customerMessage, adminNote: null, status: "pending", reviewedBy: null, reviewedAt: null, createdAt: now, updatedAt: now };
+    const chatSessionId = "chatSessionId" in input ? input.chatSessionId : null;
+    const item: RescheduleRequestRecord = { ...input, chatSessionId, id: createId(), customerMessage: input.customerMessage, adminNote: null, status: "pending", reviewedBy: null, reviewedAt: null, createdAt: now, updatedAt: now };
     if (this.requests.some((value) => value.bookingId === input.bookingId && (value.status === "pending" || value.status === "held"))) throw { code: "23505", constraint_name: "reschedule_requests_active_booking_uidx" };
     this.requests.push(item);
     return cloneRequest(item);

@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -54,6 +55,26 @@ export const paymentStatus = pgEnum("payment_status", [
   "paid",
   "failed",
   "refunded",
+]);
+export const chatSessionStatus = pgEnum("chat_session_status", [
+  "active",
+  "awaiting_confirmation",
+  "submitted",
+  "closed",
+]);
+export const chatMessageRole = pgEnum("chat_message_role", ["user", "assistant", "system"]);
+export const chatAnalysisStatus = pgEnum("chat_analysis_status", ["pending", "completed", "failed"]);
+export const chatIntent = pgEnum("chat_intent", [
+  "Reschedule",
+  "Cancel",
+  "Schedule inquiry",
+  "Confirmation",
+  "Other",
+]);
+export const chatAnalysisNextState = pgEnum("chat_analysis_next_state", [
+  "active",
+  "awaiting_confirmation",
+  "submitted",
 ]);
 
 export const users = pgTable(
@@ -276,10 +297,85 @@ export const bookings = pgTable(
   ],
 );
 
+export const chatSessions = pgTable(
+  "chat_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "restrict" }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "restrict" }),
+    sourceScheduleId: uuid("source_schedule_id").references(() => schedules.id, { onDelete: "restrict" }),
+    status: chatSessionStatus("status").notNull().default("active"),
+    currentIntent: chatIntent("current_intent"),
+    proposedScheduleId: uuid("proposed_schedule_id").references(() => schedules.id, { onDelete: "set null" }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("chat_sessions_member_idx").on(table.memberId),
+    index("chat_sessions_booking_idx").on(table.bookingId),
+    index("chat_sessions_status_idx").on(table.status),
+    uniqueIndex("chat_sessions_active_member_booking_uidx")
+      .on(table.memberId, table.bookingId)
+      .where(sql`${table.status} in ('active', 'awaiting_confirmation')`),
+  ],
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: "cascade" }),
+    role: chatMessageRole("role").notNull(),
+    content: text("content").notNull(),
+    sequence: integer("sequence").notNull(),
+    clientMessageId: uuid("client_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("chat_messages_session_sequence_uidx").on(table.sessionId, table.sequence),
+    uniqueIndex("chat_messages_session_client_message_uidx")
+      .on(table.sessionId, table.clientMessageId)
+      .where(sql`${table.clientMessageId} is not null`),
+  ],
+);
+
+export const chatMessageAnalyses = pgTable(
+  "chat_message_analyses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    status: chatAnalysisStatus("status").notNull().default("pending"),
+    intent: chatIntent("intent").notNull(),
+    confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull(),
+    extractedData: jsonb("extracted_data").$type<Record<string, unknown>>().notNull(),
+    recommendedScheduleIds: jsonb("recommended_schedule_ids").$type<string[]>().notNull(),
+    nextState: chatAnalysisNextState("next_state").notNull(),
+    reply: text("reply").notNull(),
+    model: varchar("model", { length: 120 }).notNull(),
+    modelVersion: varchar("model_version", { length: 120 }).notNull(),
+    errorCode: varchar("error_code", { length: 120 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("chat_message_analyses_message_uidx").on(table.messageId),
+    index("chat_message_analyses_status_idx").on(table.status),
+    check("chat_message_analyses_confidence_chk", sql`${table.confidence} >= 0 and ${table.confidence} <= 1`),
+  ],
+);
+
 export const rescheduleRequests = pgTable(
   "reschedule_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    chatSessionId: uuid("chat_session_id").references(() => chatSessions.id, { onDelete: "set null" }),
     bookingId: uuid("booking_id")
       .notNull()
       .references(() => bookings.id, { onDelete: "cascade" }),
