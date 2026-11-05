@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { closeDb, createDb } from "./client";
 import {
+  bookings,
   coachServices,
   coaches,
   members,
@@ -41,7 +42,9 @@ async function seed(): Promise<void> {
   try {
     connection = createDb();
     const { db } = connection;
-    const now = new Date("2026-01-01T00:00:00.000Z");
+    const now = new Date();
+    const scheduleTime = (daysAhead: number, hourUtc: number) =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysAhead, hourUtc));
     const adminPassword = Bun.env.SEED_ADMIN_PASSWORD!;
     const customerPassword = Bun.env.SEED_CUSTOMER_PASSWORD!;
     // Explicit credentials are required. Existing seed-user password hashes are never reset on reruns.
@@ -180,16 +183,25 @@ async function seed(): Promise<void> {
     await tx.insert(subscriptions).values({
       id: seedIds.subscription, memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active",
       startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "75.00",
-    }).onConflictDoUpdate({ target: subscriptions.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active", startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "75.00", updatedAt: now } });
+    }).onConflictDoUpdate({ target: subscriptions.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active", startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, amountPaid: "75.00", updatedAt: now } });
     await tx.insert(payments).values({
       id: seedIds.payment, memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid",
       method: "seed", reference: "seed-payment-0001", paidAt: now,
     }).onConflictDoUpdate({ target: payments.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid", method: "seed", reference: "seed-payment-0001", paidAt: now, updatedAt: now } });
-    await tx.insert(schedules).values([
-      { id: seedIds.scheduleYoga, title: "Morning Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 25 * 60 * 60 * 1000), capacity: 10, status: "available" },
-      { id: seedIds.scheduleStrength, title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: new Date(now.getTime() + 48 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 49 * 60 * 60 * 1000), capacity: 8, status: "available" },
-    ]).onConflictDoUpdate({ target: schedules.id, set: { title: "Morning Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: new Date(now.getTime() + 24 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 25 * 60 * 60 * 1000), capacity: 10, status: "available", updatedAt: now } });
-    await tx.update(schedules).set({ title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: new Date(now.getTime() + 48 * 60 * 60 * 1000), endsAt: new Date(now.getTime() + 49 * 60 * 60 * 1000), capacity: 8, status: "available", updatedAt: now }).where(eq(schedules.id, seedIds.scheduleStrength));
+    const seedSchedules = [
+      { id: seedIds.scheduleYoga, title: "Morning Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: scheduleTime(1, 8), endsAt: scheduleTime(1, 9), capacity: 10, status: "available" as const },
+      { id: seedIds.scheduleStrength, title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: scheduleTime(2, 18), endsAt: scheduleTime(2, 19), capacity: 8, status: "available" as const },
+      { id: seedIds.scheduleYogaEvening, title: "Evening Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: scheduleTime(1, 18), endsAt: scheduleTime(1, 19), capacity: 10, status: "available" as const },
+      { id: seedIds.scheduleYogaNextWeek, title: "Morning Yoga Next Week", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: scheduleTime(8, 8), endsAt: scheduleTime(8, 9), capacity: 10, status: "available" as const },
+    ];
+    for (const schedule of seedSchedules) {
+      const { id, ...values } = schedule;
+      await tx.insert(schedules).values(schedule).onConflictDoUpdate({ target: schedules.id, set: { ...values, updatedAt: now } });
+    }
+    await tx
+      .insert(bookings)
+      .values({ id: seedIds.booking, memberId: seedIds.member, scheduleId: seedIds.scheduleYoga, subscriptionId: seedIds.subscription })
+      .onConflictDoNothing({ target: bookings.id });
     });
   } finally {
     await closeDb(connection?.client ?? null);
