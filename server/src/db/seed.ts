@@ -178,16 +178,16 @@ async function seed(): Promise<void> {
       ])
       .onConflictDoNothing();
 
-    await tx.insert(packages).values({ id: seedIds.packageStarter, name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "75.00", totalSessions: 5, validityDays: 45, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "75.00", totalSessions: 5, validityDays: 45, status: "active", updatedAt: now } });
-    await tx.insert(packages).values({ id: seedIds.packageUnlimited, name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "199.00", totalSessions: 30, validityDays: 30, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "199.00", totalSessions: 30, validityDays: 30, status: "active", updatedAt: now } });
+    await tx.insert(packages).values({ id: seedIds.packageStarter, name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "750000.00", totalSessions: 5, validityDays: 45, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Starter 5", category: "personal_training", description: "Five coached sessions", price: "750000.00", totalSessions: 5, validityDays: 45, status: "active", updatedAt: now } });
+    await tx.insert(packages).values({ id: seedIds.packageUnlimited, name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "1990000.00", totalSessions: 30, validityDays: 30, status: "active" }).onConflictDoUpdate({ target: packages.id, set: { name: "Unlimited 30", category: "personal_training", description: "Unlimited sessions for thirty days", price: "1990000.00", totalSessions: 30, validityDays: 30, status: "active", updatedAt: now } });
     await tx.insert(subscriptions).values({
       id: seedIds.subscription, memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active",
-      startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "75.00",
-    }).onConflictDoUpdate({ target: subscriptions.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active", startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, amountPaid: "75.00", updatedAt: now } });
+      startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, usedSessions: 0, amountPaid: "750000.00",
+    }).onConflictDoUpdate({ target: subscriptions.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, status: "active", startsAt: now, expiresAt: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), totalSessions: 5, amountPaid: "750000.00", updatedAt: now } });
     await tx.insert(payments).values({
-      id: seedIds.payment, memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid",
+      id: seedIds.payment, memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "750000.00", status: "paid",
       method: "seed", reference: "seed-payment-0001", paidAt: now,
-    }).onConflictDoUpdate({ target: payments.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "75.00", status: "paid", method: "seed", reference: "seed-payment-0001", paidAt: now, updatedAt: now } });
+    }).onConflictDoUpdate({ target: payments.id, set: { memberId: seedIds.member, packageId: seedIds.packageStarter, subscriptionId: seedIds.subscription, amount: "750000.00", status: "paid", method: "seed", reference: "seed-payment-0001", paidAt: now, updatedAt: now } });
     const seedSchedules = [
       { id: seedIds.scheduleYoga, title: "Morning Yoga", coachId: seedIds.coachOne, serviceId: seedIds.serviceYoga, startsAt: scheduleTime(1, 8), endsAt: scheduleTime(1, 9), capacity: 10, status: "available" as const },
       { id: seedIds.scheduleStrength, title: "Evening Strength Training", coachId: seedIds.coachTwo, serviceId: seedIds.serviceStrength, startsAt: scheduleTime(2, 18), endsAt: scheduleTime(2, 19), capacity: 8, status: "available" as const },
