@@ -24,6 +24,9 @@ import { scheduleRoutes } from "./modules/schedules/routes";
 import { createPaymentRepository, InMemoryPaymentRepository } from "./modules/payments/repository";
 import type { PaymentRepository } from "./modules/payments/schema";
 import { PaymentService } from "./modules/payments/service";
+import { createPaymentGateway, type PaymentGateway } from "./modules/payments/gateway";
+import { ServiceCatalogService } from "./modules/services/service";
+import { serviceRoutes } from "./modules/services/routes";
 import { paymentRoutes } from "./modules/payments/routes";
 import { createBookingRepository, InMemoryBookingRepository } from "./modules/bookings/repository";
 import type { BookingRepository } from "./modules/bookings/schema";
@@ -56,6 +59,7 @@ export interface AppOptions {
   chatRepository?: ChatRepository;
   chatTransactionCoordinator?: ChatTransactionCoordinator;
   genAiClient?: GenAiClient;
+  paymentGateway?: PaymentGateway;
 }
 
 export function createApp(config: AppConfig = loadConfig(), options: AppOptions = {}) {
@@ -95,6 +99,7 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
       ? createInMemoryChatTransactionCoordinator({ chat: chatRepository, reschedule: rescheduleRepository, booking: bookingRepository, payment: paymentRepository, catalog: catalogRepository })
       : (() => { throw new Error("An in-memory chat transaction coordinator is required when custom repositories are configured"); })());
   const genAiClient = options.genAiClient ?? createGenAiClient(config);
+  const paymentGateway = options.paymentGateway ?? createPaymentGateway(config);
   let signAccessToken: (user: { userId: string; role: "admin" | "customer" }) => Promise<string> = async () => {
     throw new Error("JWT plugin is not initialized");
   };
@@ -130,9 +135,10 @@ export function createApp(config: AppConfig = loadConfig(), options: AppOptions 
       return {};
     });
   const withCoaches = coachRoutes(configured, new CoachService(catalogRepository, repository), repository);
-  const withPackages = packageRoutes(withCoaches, new PackageService(catalogRepository, repository), repository);
+  const withServices = serviceRoutes(withCoaches, new ServiceCatalogService(catalogRepository, repository), repository);
+  const withPackages = packageRoutes(withServices, new PackageService(catalogRepository, repository), repository);
   const catalog = scheduleRoutes(withPackages, new ScheduleService(catalogRepository, repository), repository);
-  const withPayments = paymentRoutes(catalog, new PaymentService(paymentRepository, repository), repository);
+  const withPayments = paymentRoutes(catalog, new PaymentService(paymentRepository, repository, paymentGateway), repository);
   const withBookings = bookingRoutes(withPayments, new BookingService(bookingRepository, repository), repository);
   const withReschedules = rescheduleRoutes(withBookings, new RescheduleService(rescheduleRepository, repository), repository);
   const withChat = chatRoutes(withReschedules, new ChatService({ auth: repository, catalog: catalogRepository, booking: bookingRepository, payment: paymentRepository, reschedule: rescheduleRepository, chat: chatRepository, coordinator: chatTransactionCoordinator, ai: genAiClient }), repository);

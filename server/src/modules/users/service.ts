@@ -28,6 +28,14 @@ export class UserService {
     return sanitizeUser(user);
   }
 
+  async updateOwn(requestingUser: AuthUser, input: { name: string }) {
+    const name = input.name.trim();
+    if (!name) throw new AppError("BAD_REQUEST", "Name cannot be empty");
+    const user = await this.repository.updateUser(requestingUser.userId, { name });
+    if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+    return sanitizeUser(user);
+  }
+
   assertCanAccess(requestingUser: AuthUser, targetUserId: string): void {
     if (requestingUser.role !== "admin" && requestingUser.userId !== targetUserId) {
       throw new AppError("FORBIDDEN", "Forbidden", 403);

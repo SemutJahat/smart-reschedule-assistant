@@ -77,6 +77,8 @@ export interface AuthRepository {
   listUsers(): Promise<UserRecord[]>;
   insertUser(user: NewUser): Promise<UserRecord>;
   updateUser(id: string, patch: UserPatch): Promise<UserRecord | null>;
+  updateUserPassword(id: string, passwordHash: string): Promise<boolean>;
+  revokeRefreshTokensForUser(userId: string, revokedAt?: Date): Promise<void>;
   insertMember(member: NewMember): Promise<MemberRecord>;
   findMemberById(id: string): Promise<MemberRecord | null>;
   findMemberByUserId(userId: string): Promise<MemberRecord | null>;

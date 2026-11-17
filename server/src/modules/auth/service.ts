@@ -135,6 +135,19 @@ export class AuthService {
     if (record && !record.revokedAt) await this.repository.revokeRefreshToken(record.id, this.now());
   }
 
+  async changePassword(userId: string, input: { currentPassword: string; newPassword: string }) {
+    validatePassword(input.newPassword);
+    if (input.currentPassword === input.newPassword) bad("New password must be different from the current password");
+    return this.repository.transaction(async (tx) => {
+      const user = await tx.findUserById(userId);
+      if (!user) bad("User not found", 404);
+      if (!(await Bun.password.verify(input.currentPassword, user.passwordHash))) bad("Current password is incorrect");
+      await tx.updateUserPassword(user.id, await Bun.password.hash(input.newPassword, { algorithm: "argon2id" }));
+      await tx.revokeRefreshTokensForUser(user.id, this.now());
+      return this.issueTokens(tx, user);
+    });
+  }
+
   async me(userId: string) {
     const user = await this.repository.findUserById(userId);
     if (!user) bad("User not found", 404);

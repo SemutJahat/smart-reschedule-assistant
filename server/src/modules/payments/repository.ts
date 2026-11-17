@@ -111,7 +111,7 @@ export class InMemoryPaymentRepository implements PaymentRepository {
   async listPayments(filters: PaymentFilters = {}) { return this.payments.filter((item) => (!filters.status || item.status === filters.status) && (!filters.memberId || item.memberId === filters.memberId)).map((item) => ({ ...item })); }
   async insertPayment(input: NewPayment) {
     const now = new Date();
-    const item: PaymentRecord = { id: createId(), memberId: input.memberId, packageId: input.packageId, subscriptionId: null, amount: input.amount, status: "pending", method: input.method ?? null, reference: input.reference ?? null, paidAt: null, createdAt: now, updatedAt: now };
+    const item: PaymentRecord = { id: createId(), memberId: input.memberId, packageId: input.packageId, subscriptionId: null, amount: input.amount, status: "pending", method: input.method ?? null, reference: input.reference ?? null, snapToken: null, snapRedirectUrl: null, paidAt: null, createdAt: now, updatedAt: now };
     this.payments.push(item);
     return { ...item };
   }

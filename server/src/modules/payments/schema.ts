@@ -12,6 +12,8 @@ export interface PaymentRecord {
   status: PaymentStatus;
   method: string | null;
   reference: string | null;
+  snapToken: string | null;
+  snapRedirectUrl: string | null;
   paidAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +48,9 @@ export interface NewPayment {
 
 export interface PaymentPatch {
   status?: PaymentStatus;
+  method?: string | null;
+  snapToken?: string | null;
+  snapRedirectUrl?: string | null;
   subscriptionId?: string | null;
   paidAt?: Date | null;
 }

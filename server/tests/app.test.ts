@@ -59,6 +59,7 @@ test("production configuration requires database, strong JWT secrets, and explic
     GEN_AI_MODE: "http",
     GEN_AI_BASE_URL: "https://ai.example",
     GEN_AI_API_KEY: "test-key",
+    MIDTRANS_SERVER_KEY: "midtrans-test-server-key",
   });
   expect(valid.databaseUrl).toBe("postgres://localhost/app");
   expect(() => createTestApp({ ...valid, databaseUrl: undefined })).toThrow("DATABASE_URL is required in production");
