@@ -88,10 +88,11 @@ export class PaymentService {
 
   async handleNotification(notification: MidtransNotification) {
     if (!this.gateway.verifyNotification(notification)) throw new AppError("FORBIDDEN", "Invalid notification signature", 403);
-    if (!UUID_PATTERN.test(notification.order_id)) throw new AppError("NOT_FOUND", "Payment not found", 404);
+    const ignored = { received: true, paymentId: null, status: null };
+    if (!UUID_PATTERN.test(notification.order_id)) return ignored;
     return this.repository.transaction(async (tx) => {
       const payment = await tx.findPayment(notification.order_id, true);
-      if (!payment) throw new AppError("NOT_FOUND", "Payment not found", 404);
+      if (!payment) return ignored;
       if (Number(notification.gross_amount) !== rupiah(payment.amount)) throw new AppError("CONFLICT", "Notification amount does not match payment amount", 409);
       const method = payment.method ?? notification.payment_type?.trim().slice(0, 64) ?? null;
       const target = notificationTarget(notification);

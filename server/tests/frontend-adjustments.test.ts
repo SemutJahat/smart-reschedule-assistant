@@ -169,8 +169,12 @@ test("Midtrans webhook rejects bad signatures and amounts, and handles failure s
   const payment = await (await call("/payments", { method: "POST", ...json({ packageId: packageItem.id }, customer) })).json() as { id: string };
   expect((await call("/payments/webhook", { method: "POST", ...json({ ...notification(payment.id, "settlement"), signature_key: "f".repeat(128) }) })).status).toBe(403);
   expect((await call("/payments/webhook", { method: "POST", ...json(notification(payment.id, "settlement", "1000.00")) })).status).toBe(409);
-  expect((await call("/payments/webhook", { method: "POST", ...json(notification(crypto.randomUUID(), "settlement")) })).status).toBe(404);
-  expect((await call("/payments/webhook", { method: "POST", ...json(notification("not-a-uuid", "settlement")) })).status).toBe(404);
+  const unknown = await call("/payments/webhook", { method: "POST", ...json(notification(crypto.randomUUID(), "settlement")) });
+  expect(unknown.status).toBe(200);
+  expect(await unknown.json()).toEqual({ received: true, paymentId: null, status: null });
+  const dashboardTest = await call("/payments/webhook", { method: "POST", ...json(notification("payment_notif_test_G123456789_7c4f0b2e", "capture", "105000.00")) });
+  expect(dashboardTest.status).toBe(200);
+  expect(await dashboardTest.json()).toEqual({ received: true, paymentId: null, status: null });
 
   const challenged = await call("/payments/webhook", { method: "POST", ...json(notification(payment.id, "capture", "250000.00", { fraud_status: "challenge" })) });
   expect(await challenged.json()).toMatchObject({ status: "pending" });

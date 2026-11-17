@@ -9,7 +9,7 @@ const paymentBody = t.Object({ packageId: t.String({ format: "uuid" }), method: 
 const paymentResponse = t.Object({ id: t.String(), memberId: t.String(), packageId: t.String(), subscriptionId: t.Union([t.String(), t.Null()]), amount: t.String(), status, method: t.Union([t.String(), t.Null()]), reference: t.Union([t.String(), t.Null()]), snapToken: t.Union([t.String(), t.Null()]), snapRedirectUrl: t.Union([t.String(), t.Null()]), paidAt: t.Union([t.String(), t.Null()]), createdAt: t.String(), updatedAt: t.String() });
 const createdPaymentResponse = t.Composite([paymentResponse, t.Object({ snapToken: t.String(), snapRedirectUrl: t.String() })]);
 const notificationBody = t.Object({ order_id: t.String({ minLength: 1 }), status_code: t.String({ minLength: 1 }), gross_amount: t.String({ minLength: 1 }), signature_key: t.String({ minLength: 1 }), transaction_status: t.String({ minLength: 1 }), fraud_status: t.Optional(t.String()), payment_type: t.Optional(t.String()) }, { additionalProperties: true });
-const notificationResponse = t.Object({ received: t.Boolean(), paymentId: t.String(), status });
+const notificationResponse = t.Object({ received: t.Boolean(), paymentId: t.Union([t.String(), t.Null()]), status: t.Union([status, t.Null()]) });
 const subscriptionResponse = t.Object({ id: t.String(), memberId: t.String(), packageId: t.String(), status: t.Union([t.Literal("pending"), t.Literal("held"), t.Literal("active"), t.Literal("expired"), t.Literal("cancelled")]), startsAt: t.String(), expiresAt: t.String(), totalSessions: t.Number(), usedSessions: t.Number(), amountPaid: t.String(), createdAt: t.String(), updatedAt: t.String() });
 
 export function paymentRoutes(app: AnyElysia, service: PaymentService, auth: AuthRepository) {
