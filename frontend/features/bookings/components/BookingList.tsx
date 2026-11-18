@@ -56,6 +56,7 @@ export function BookingList() {
                 capacity={booking.schedule.capacity}
                 bookedCount={booking.schedule.bookedCount}
                 status={booking.status}
+                statusType="booking"
                 actionButton={
                   <Button
                     variant="outline"
@@ -91,6 +92,7 @@ export function BookingList() {
                 capacity={booking.schedule.capacity}
                 bookedCount={booking.schedule.bookedCount}
                 status={booking.status}
+                statusType="booking"
               />
             ))}
           </div>

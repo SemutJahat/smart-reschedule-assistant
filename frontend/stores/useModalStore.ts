@@ -5,8 +5,9 @@ export type ModalType =
   | "service-form"
   | "member-form"
   | "confirm"
-  | "coach-form" 
-  | "schedule-form"; 
+  | "coach-form"
+  | "schedule-form"
+  | "reschedule-chat";
 
 interface ModalState {
   isOpen: boolean;

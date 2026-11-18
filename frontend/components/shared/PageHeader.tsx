@@ -4,9 +4,15 @@ interface PageHeaderProps {
   title: string;
   description?: string;
   action?: ReactNode;
+  children?: ReactNode;
 }
 
-export function PageHeader({ title, description, action }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  action,
+  children,
+}: PageHeaderProps) {
   return (
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
       <div>
@@ -17,7 +23,12 @@ export function PageHeader({ title, description, action }: PageHeaderProps) {
           <p className="text-[#64748B] mt-1 text-sm">{description}</p>
         )}
       </div>
-      {action && <div>{action}</div>}
+      {(action || children) && (
+        <div>
+          {action}
+          {children}
+        </div>
+      )}
     </div>
   );
 }

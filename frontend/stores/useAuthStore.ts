@@ -21,6 +21,12 @@ interface AuthState {
   waitForHydration: () => Promise<void>;
 
   login: (email: string, password: string, role: string) => Promise<boolean>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    phone?: string,
+  ) => Promise<boolean>;
   setSession: (user: AuthUser, token: string, refreshToken?: string) => void;
   setTokens: (accessToken: string, refreshToken: string) => void; // <-- Fungsi pembaruan token
   logout: () => void;
@@ -88,6 +94,41 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error: any) {
           set({ error: error.message || "Gagal masuk.", isLoading: false });
+          return false;
+        }
+      },
+
+      register: async (name, email, password, phone) => {
+        set({ isLoading: true, error: null });
+        try {
+          const res = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/auth/register`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name,
+                email,
+                password,
+                phone: phone?.trim() || null,
+              }),
+            },
+          );
+
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            throw new Error(
+              data?.error?.message || data?.message || "Registrasi gagal",
+            );
+          }
+
+          get().setSession(data.user, data.accessToken, data.refreshToken);
+          return true;
+        } catch (error: any) {
+          set({
+            error: error.message || "Terjadi kesalahan saat registrasi",
+            isLoading: false,
+          });
           return false;
         }
       },

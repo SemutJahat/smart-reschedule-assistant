@@ -6,7 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCoachStore } from "../store/useCoachStore";
 import { useCatalogStore } from "@/features/catalog/store/useCatalogStore";
 import { useModalStore } from "@/stores/useModalStore";
-import { coachSchema, type CoachFormData, type CoachDTO } from "../schemas";
+import {
+  coachSchema,
+  type CoachFormData,
+  type CoachFormInput,
+  type CoachDTO,
+} from "../schemas";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -25,7 +30,7 @@ export function CoachForm({ coachData }: CoachFormProps) {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CoachFormData>({
+  } = useForm<CoachFormInput, unknown, CoachFormData>({
     resolver: zodResolver(coachSchema),
     defaultValues: {
       name: coachData?.name || "",

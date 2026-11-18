@@ -17,18 +17,21 @@ export const useAdminProfileStore = create<AdminProfileState>((set) => ({
   updateProfile: async (data) => {
     set({ isUpdatingProfile: true });
     try {
-      const { user, setSession } = useAuthStore.getState();
+      const { user, token, refreshToken, setSession } =
+        useAuthStore.getState();
       if (!user) throw new Error("Tidak ada sesi admin");
 
       const updatedUser = await userApi.updateAdminProfile(user.id, data);
 
       setSession(
         {
-          userId: updatedUser.id,
-          role: updatedUser.role,
-          name: updatedUser.name,
+          id: updatedUser.id ?? user.id,
+          name: updatedUser.name ?? user.name,
+          email: updatedUser.email ?? user.email,
+          role: updatedUser.role ?? user.role,
         },
-        useAuthStore.getState().accessToken!,
+        token!,
+        refreshToken ?? undefined,
       );
 
       return true;

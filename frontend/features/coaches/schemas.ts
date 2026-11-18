@@ -9,7 +9,8 @@ export const coachSchema = z.object({
   serviceIds: z.array(z.string().uuid("ID Layanan tidak valid")).default([]),
 });
 
-export type CoachFormData = z.infer<typeof coachSchema>;
+export type CoachFormData = z.output<typeof coachSchema>;
+export type CoachFormInput = z.input<typeof coachSchema>;
 
 export interface CoachDTO {
   id: string;

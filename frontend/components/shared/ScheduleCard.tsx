@@ -3,6 +3,9 @@
 import { Calendar, Clock, UserCircle, Users } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { formatDateTime } from "@/lib/format";
+import type { BookingStatus } from "@/features/bookings/schemas";
+
+type ScheduleStatus = "available" | "full" | "cancelled";
 
 export interface ScheduleCardProps {
   title: string;
@@ -12,7 +15,8 @@ export interface ScheduleCardProps {
   endsAt: string;
   capacity: number;
   bookedCount: number;
-  status: "available" | "full" | "cancelled";
+  status: ScheduleStatus | BookingStatus;
+  statusType?: "schedule" | "booking";
   onClick?: () => void;
   actionButton?: React.ReactNode;
 }
@@ -26,6 +30,7 @@ export function ScheduleCard({
   capacity,
   bookedCount,
   status,
+  statusType = "schedule",
   onClick,
   actionButton,
 }: ScheduleCardProps) {
@@ -52,7 +57,7 @@ export function ScheduleCard({
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]">
           {serviceName}
         </span>
-        <StatusBadge type="schedule" status={status} />
+        <StatusBadge type={statusType} status={status} />
       </div>
 
       <h3

@@ -35,6 +35,7 @@ export function CustomerModalHost() {
                     capacity={s.capacity}
                     bookedCount={s.bookedCount}
                     status="booked"
+                    statusType="booking"
                   />
                 </div>
               </div>
