@@ -2,6 +2,7 @@ import os
 import json
 import secrets
 import typing
+from datetime import datetime, timedelta, timezone
 import uvicorn
 from fastapi import FastAPI, Request, Header
 from fastapi.exceptions import RequestValidationError
@@ -33,6 +34,26 @@ CONFIRMATION_REPLIES = {
         "none": "There is no schedule waiting for confirmation right now. Which schedule would you like?",
     },
 }
+
+
+WIB = timezone(timedelta(hours=7), "WIB")
+HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+
+
+def format_wib(value, with_time: bool = True) -> str:
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        try:
+            moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return str(value)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    local = moment.astimezone(WIB)
+    text = f"{HARI[local.weekday()]}, {local.day} {BULAN[local.month - 1]} {local.year}"
+    return f"{text} pukul {local:%H:%M} WIB" if with_time else text
 
 
 class ModelUnavailableError(Exception):
@@ -148,7 +169,7 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
 
     source_sch = context.get("sourceSchedule", {})
     source_text = (
-        f"Judul: {source_sch.get('title', 'N/A')} | Waktu: {source_sch.get('startsAt', 'N/A')}"
+        f"Judul: {source_sch.get('title', 'N/A')} | Waktu: {format_wib(source_sch.get('startsAt', 'N/A'))}"
         if source_sch else "Tidak ada jadwal aktif."
     )
 
@@ -156,6 +177,10 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
     session_status = session.get("status", "active")
     proposed_schedule_id = session.get("proposedScheduleId")
     remaining_quota = (context.get("eligibility") or {}).get("remainingQuota", "N/A")
+
+    now_wib = datetime.now(WIB)
+    today_text = format_wib(now_wib)
+    tomorrow_text = format_wib(now_wib + timedelta(days=1), with_time=False)
 
     candidate_schedules = context.get("candidateSchedules", [])
     valid_candidate_ids = []
@@ -167,7 +192,7 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
             sch_id = sch.get("id")
             if sch_id:
                 valid_candidate_ids.append(sch_id)
-                candidates_text += f"- ID: {sch_id} | Kelas: {sch.get('title')} | Mulai: {sch.get('startsAt')} | Sisa Kuota: {cand.get('remainingCapacity')}\n"
+                candidates_text += f"- ID: {sch_id} | Kelas: {sch.get('title')} | Mulai: {format_wib(sch.get('startsAt'))} | Sisa Kuota: {cand.get('remainingCapacity')}\n"
     else:
         candidates_text = "Tidak ada kandidat jadwal alternatif dari backend."
 
@@ -175,6 +200,9 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
     prompt = f"""
     Kamu adalah asisten admin dan konsultan kebugaran di Gymnasyum yang sangat ramah dan profesional.
     Analisis pesan pelanggan dan hasilkan respons dalam format JSON murni.
+
+    WAKTU SEKARANG: {today_text}
+    "Besok" berarti {tomorrow_text}. Pahami kata waktu relatif (hari ini, besok, lusa, minggu depan, pagi, siang, sore, malam) berdasarkan WAKTU SEKARANG.
 
     INFORMASI ATURAN GYM & FASILITAS (RAG):
     {relevant_context}
@@ -191,7 +219,7 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
     RIWAYAT PERCAKAPAN:
     {full_chat_history}
 
-    PENTING SOAL WAKTU: Abaikan zona waktu UTC (huruf Z) pada sistem. Anggap angka jam yang tertera (misalnya 18:00 atau 08:00) SUDAH merupakan waktu lokal gym. JANGAN tambahkan +7 jam. (Contoh: 18:00 adalah jam 6 sore / malam).
+    PENTING SOAL WAKTU: Semua waktu di atas sudah dalam WIB (waktu lokal gym). Pagi = 05:00-11:00, siang = 11:00-15:00, sore = 15:00-18:00, malam = 18:00-22:00. Hanya usulkan kandidat yang tanggal DAN rentang jamnya cocok dengan permintaan user. Jika tidak ada kandidat yang cocok, kosongkan recommendedScheduleIds, jelaskan bahwa jadwal tersebut tidak tersedia, lalu sebutkan pilihan terdekat yang ada tanpa mengusulkannya.
 
     ATURAN JSON KETAT:
     1. "intent": Pilih SATU dari: ["Reschedule", "Cancel", "Schedule inquiry", "Confirmation", "Other"].
