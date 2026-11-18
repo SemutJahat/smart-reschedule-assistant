@@ -112,3 +112,26 @@ test("chat message returns NO_AVAILABLE_SCHEDULE and terminal sessions reject me
   expect(terminal.status).toBe(409);
   expect((await terminal.json()).error.code).toBe("CHAT_SESSION_CLOSED");
 });
+
+test("schedules the member already booked are not offered by the assistant", async () => {
+  const existing = catalog.bookings[0]!;
+  catalog.bookings.push({ ...existing, id: id(), scheduleId: targetScheduleId });
+  const created = await app.handle(new Request("http://localhost/chat/sessions", { method: "POST", ...json({ bookingId }, customerToken) }));
+  const session = await created.json() as { id: string };
+  const message = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { method: "POST", ...json({ message: "Please move me", clientMessageId: id() }, customerToken) }));
+  expect(message.status).toBe(409);
+  expect((await message.json() as { error: { code: string } }).error.code).toBe("NO_AVAILABLE_SCHEDULE");
+});
+
+test("confirmation is rejected when the member already booked the target schedule", async () => {
+  const created = await app.handle(new Request("http://localhost/chat/sessions", { method: "POST", ...json({ bookingId }, customerToken) }));
+  const session = await created.json() as { id: string };
+  await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/messages`, { method: "POST", ...json({ message: "Please move me", clientMessageId: id() }, customerToken) }));
+  const existing = catalog.bookings[0]!;
+  catalog.bookings.push({ ...existing, id: id(), scheduleId: targetScheduleId });
+  const confirmed = await app.handle(new Request(`http://localhost/chat/sessions/${session.id}/confirm`, { method: "POST", ...json({ scheduleId: targetScheduleId }, customerToken) }));
+  expect(confirmed.status).toBe(409);
+  const body = await confirmed.json() as { error: { code: string; message: string } };
+  expect(body.error.code).toBe("SCHEDULE_UNAVAILABLE");
+  expect(body.error.message).toBe("Member already has a booking on the target schedule");
+});

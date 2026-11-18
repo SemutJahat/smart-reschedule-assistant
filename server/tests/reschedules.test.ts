@@ -144,3 +144,21 @@ test("cancelling a booking cancels its held reschedule request but leaves decide
   expect(all.find((item) => item.id === first.id)?.status).toBe("rejected");
   expect(all.find((item) => item.id === second.id)?.status).toBe("cancelled");
 });
+
+test("requests are rejected when the member already booked the target schedule", async () => {
+  const existing = catalog.bookings.find((item) => item.id === bookingId)!;
+  catalog.bookings.push({ ...existing, id: id(), scheduleId: targetId });
+  const response = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  expect(response.status).toBe(409);
+  expect((await response.json() as { error: { message: string } }).error.message).toBe("Member already has a booking on the target schedule");
+});
+
+test("approval is rejected with a clear message when the member booked the target after requesting", async () => {
+  const request = await (await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }))).json() as { id: string };
+  const existing = catalog.bookings.find((item) => item.id === bookingId)!;
+  catalog.bookings.push({ ...existing, id: id(), scheduleId: targetId });
+  const response = await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "approved" }, adminToken) }));
+  expect(response.status).toBe(409);
+  expect((await response.json() as { error: { message: string } }).error.message).toBe("Member already has a booking on the target schedule");
+  expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(sourceId);
+});

@@ -56,6 +56,7 @@ export interface RescheduleRepository {
   findSchedule(id: string, lock?: boolean): Promise<ScheduleRecord | null>;
   updateScheduleStatus(id: string, status: ScheduleRecord["status"]): Promise<ScheduleRecord | null>;
   countBooked(scheduleId: string): Promise<number>;
+  findActiveBookingForMemberSchedule(memberId: string, scheduleId: string): Promise<BookingRecord | null>;
 }
 
 export type RescheduleBookingRepository = BookingRepository;

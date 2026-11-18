@@ -17,6 +17,7 @@ const serialize = (item: RescheduleRequestRecord) => ({
 function mapConflict(error: any) {
   const code = error?.code ?? error?.cause?.code;
   const constraint = error?.constraint_name ?? error?.constraint ?? error?.cause?.constraint_name;
+  if (constraint === "bookings_member_schedule_active_uidx") return new AppError("CONFLICT", "Member already has a booking on the target schedule", 409);
   if (code === "23505" || code === "23514" || code === "P0001" || code === "P0002" || code === "P0003" || code === "P0004" || code === "P0005" || code === "P0006" || constraint === "reschedule_requests_active_booking_uidx") {
     return new AppError("CONFLICT", "Reschedule request conflicts with the current booking state", 409);
   }
@@ -46,6 +47,7 @@ export class RescheduleService {
         if (target.status === "cancelled") throw new AppError("CONFLICT", "Target schedule is cancelled", 409);
         if (target.startsAt <= new Date()) throw new AppError("CONFLICT", "Target schedule has already started", 409);
         if ((await tx.countBooked(target.id)) >= target.capacity) throw new AppError("CONFLICT", "Target schedule is full", 409);
+        if (await tx.findActiveBookingForMemberSchedule(member.id, target.id)) throw new AppError("CONFLICT", "Member already has a booking on the target schedule", 409);
         if ((await tx.listRequests({ memberId: member.id })).some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) {
           throw new AppError("CONFLICT", "An active reschedule request already exists", 409);
         }
@@ -89,6 +91,7 @@ export class RescheduleService {
           if (target.status === "cancelled") throw new AppError("CONFLICT", "Target schedule is cancelled", 409);
           if (target.startsAt <= new Date()) throw new AppError("CONFLICT", "Target schedule has already started", 409);
           if ((await tx.countBooked(target.id)) >= target.capacity) throw new AppError("CONFLICT", "Target schedule is full", 409);
+          if (await tx.findActiveBookingForMemberSchedule(booking.memberId, target.id)) throw new AppError("CONFLICT", "Member already has a booking on the target schedule", 409);
           await tx.updateBookingSchedule(booking.id, target.id);
           await repairSchedule(tx, request.fromScheduleId);
           await repairSchedule(tx, request.toScheduleId);
