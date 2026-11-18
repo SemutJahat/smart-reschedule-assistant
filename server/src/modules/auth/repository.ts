@@ -59,6 +59,15 @@ export class DrizzleAuthRepository implements AuthRepository {
     return rows[0] ? user(rows[0]) : null;
   }
 
+  async updateUserPassword(id: string, passwordHash: string) {
+    const rows = await this.db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, id)).returning({ id: users.id });
+    return rows.length > 0;
+  }
+
+  async revokeRefreshTokensForUser(userId: string, revokedAt = new Date()) {
+    await this.db.update(refreshTokens).set({ revokedAt, updatedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+  }
+
   async insertMember(input: NewMember) {
     const rows = await this.db.insert(members).values(input).returning();
     return member(rows[0]);
@@ -147,6 +156,8 @@ export class InMemoryAuthRepository implements AuthRepository {
     return item;
   }
   async updateUser(id: string, patch: UserPatch) { const item = await this.findUserById(id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return item; }
+  async updateUserPassword(id: string, passwordHash: string) { const item = await this.findUserById(id); if (!item) return false; item.passwordHash = passwordHash; item.updatedAt = new Date(); return true; }
+  async revokeRefreshTokensForUser(userId: string, revokedAt = new Date()) { for (const token of this.refreshTokens) if (token.userId === userId && !token.revokedAt) { token.revokedAt = revokedAt; token.updatedAt = new Date(); } }
   async insertMember(input: NewMember) {
     if (this.members.some((item) => item.userId === input.userId)) throw new Error("duplicate member");
     const now = new Date();

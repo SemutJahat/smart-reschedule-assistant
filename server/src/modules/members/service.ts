@@ -13,6 +13,16 @@ export class MemberService {
     return sanitizeMember(member);
   }
 
+  async updateOwn(user: AuthUser, patch: Omit<MemberPatch, "status">) {
+    const existing = await this.repository.findMemberByUserId(user.userId);
+    if (!existing) throw new AppError("NOT_FOUND", "Member not found", 404);
+    const { phone, emergencyContact, weight, height, bloodType, medicalHistory } = patch;
+    const allowed: MemberPatch = Object.fromEntries(Object.entries({ phone, emergencyContact, weight, height, bloodType, medicalHistory }).filter(([, value]) => value !== undefined));
+    const member = await this.repository.updateMember(existing.id, allowed);
+    if (!member) throw new AppError("NOT_FOUND", "Member not found", 404);
+    return sanitizeMember(member);
+  }
+
   async getById(user: AuthUser, id: string) {
     const member = await this.repository.findMemberById(id);
     if (!member) throw new AppError("NOT_FOUND", "Member not found", 404);

@@ -421,6 +421,8 @@ export const payments = pgTable(
     status: paymentStatus("status").notNull().default("pending"),
     method: varchar("method", { length: 64 }),
     reference: varchar("reference", { length: 255 }),
+    snapToken: varchar("snap_token", { length: 255 }),
+    snapRedirectUrl: varchar("snap_redirect_url", { length: 512 }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     ...timestamps,
   },

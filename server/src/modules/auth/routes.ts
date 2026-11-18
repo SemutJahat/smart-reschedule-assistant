@@ -16,5 +16,6 @@ export function authRoutes(app: AnyElysia, service: AuthService) {
     .post("/auth/login", ({ body }) => service.login(body), { body: credentials, response: tokenResponse })
     .post("/auth/refresh", ({ body }) => service.refresh(body.refreshToken), { body: t.Object({ refreshToken: t.String({ minLength: 1 }) }), response: tokenResponse })
     .post("/auth/logout", async ({ body }) => { await service.logout(body.refreshToken); return { success: true }; }, { body: t.Object({ refreshToken: t.String({ minLength: 1 }) }), response: successResponse })
+    .post("/auth/change-password", async (context: any) => service.changePassword((await requireAuth(context, service.repository)).userId, context.body), { body: t.Object({ currentPassword: t.String({ minLength: 1 }), newPassword: t.String({ minLength: 8 }) }), response: tokenResponse })
     .get("/auth/me", async (context: any) => service.me((await requireAuth(context, service.repository)).userId), { response: userResponse });
 }

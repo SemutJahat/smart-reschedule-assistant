@@ -39,6 +39,17 @@ export interface CoachPatch {
   serviceIds?: string[];
 }
 
+export interface ServiceInput {
+  name: string;
+  description: string | null;
+  active: boolean;
+}
+
+export interface ScheduleDetailRecord extends ScheduleRecord {
+  coachName: string;
+  serviceName: string;
+}
+
 export interface PackageRecord {
   id: string;
   name: string;
@@ -87,11 +98,17 @@ export interface CatalogRepository {
   replaceCoachServices(coachId: string, serviceIds: string[]): Promise<void>;
   listServicesByIds(ids: string[]): Promise<ServiceRecord[]>;
   listServicesForCoach(coachId: string): Promise<ServiceRecord[]>;
+  listServices(activeOnly?: boolean): Promise<ServiceRecord[]>;
+  findService(id: string): Promise<ServiceRecord | null>;
+  findServiceByName(name: string): Promise<ServiceRecord | null>;
+  insertService(input: ServiceInput): Promise<ServiceRecord>;
+  updateService(id: string, patch: Partial<ServiceInput>): Promise<ServiceRecord | null>;
   listPackages(status?: PackageRecord["status"]): Promise<PackageRecord[]>;
   findPackage(id: string): Promise<PackageRecord | null>;
   insertPackage(input: Omit<PackageRecord, "id" | "createdAt" | "updatedAt">): Promise<PackageRecord>;
   updatePackage(id: string, patch: Partial<Omit<PackageRecord, "id" | "createdAt" | "updatedAt">>): Promise<PackageRecord | null>;
   listSchedules(): Promise<ScheduleRecord[]>;
+  listScheduleDetails(): Promise<ScheduleDetailRecord[]>;
   findSchedule(id: string): Promise<ScheduleRecord | null>;
   insertSchedule(input: Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">): Promise<ScheduleRecord>;
   updateSchedule(id: string, patch: Partial<Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">>): Promise<ScheduleRecord | null>;
@@ -182,11 +199,25 @@ export class InMemoryCatalogRepository implements CatalogRepository {
     const ids = this.coachServices.filter((item) => item.coachId === coachId).map((item) => item.serviceId);
     return this.listServicesByIds(ids);
   }
+  async listServices(activeOnly = false) { return this.services.filter((item) => !activeOnly || item.active).map((item) => ({ ...item })); }
+  async findService(id: string) { const item = this.services.find((value) => value.id === id); return item ? { ...item } : null; }
+  async findServiceByName(name: string) { const item = this.services.find((value) => value.name.toLowerCase() === name.toLowerCase()); return item ? { ...item } : null; }
+  async insertService(input: ServiceInput) { const now = new Date(); const item: ServiceRecord = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now }; this.services.push(item); return { ...item }; }
+  async updateService(id: string, patch: Partial<ServiceInput>) { const item = this.services.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return { ...item }; }
   async listPackages(status?: PackageRecord["status"]) { return this.packages.filter((item) => !status || item.status === status).map((item) => ({ ...item })); }
   async findPackage(id: string) { const item = this.packages.find((value) => value.id === id); return item ? { ...item } : null; }
   async insertPackage(input: Omit<PackageRecord, "id" | "createdAt" | "updatedAt">) { const now = new Date(); const item = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now }; this.packages.push(item); return { ...item }; }
   async updatePackage(id: string, patch: Partial<Omit<PackageRecord, "id" | "createdAt" | "updatedAt">>) { const item = this.packages.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return { ...item }; }
   async listSchedules() { return this.schedules.map((item) => ({ ...item, startsAt: cloneDate(item.startsAt), endsAt: cloneDate(item.endsAt) })); }
+  async listScheduleDetails() {
+    return this.schedules.map((item) => ({
+      ...item,
+      startsAt: cloneDate(item.startsAt),
+      endsAt: cloneDate(item.endsAt),
+      coachName: this.coaches.find((coach) => coach.id === item.coachId)?.name ?? "",
+      serviceName: this.services.find((service) => service.id === item.serviceId)?.name ?? "",
+    }));
+  }
   async findSchedule(id: string) { const item = this.schedules.find((value) => value.id === id); return item ? { ...item, startsAt: cloneDate(item.startsAt), endsAt: cloneDate(item.endsAt) } : null; }
   async insertSchedule(input: Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">) { const now = new Date(); const item = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now }; this.schedules.push(item); return { ...item, startsAt: cloneDate(item.startsAt), endsAt: cloneDate(item.endsAt) }; }
   async updateSchedule(id: string, patch: Partial<Omit<ScheduleRecord, "id" | "createdAt" | "updatedAt">>) { const item = this.schedules.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return { ...item, startsAt: cloneDate(item.startsAt), endsAt: cloneDate(item.endsAt) }; }

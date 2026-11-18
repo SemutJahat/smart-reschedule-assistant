@@ -12,6 +12,8 @@ export interface AppConfig {
   genAiModel: string;
   genAiTimeoutMs: number;
   genAiMode: "stub" | "http";
+  midtransServerKey?: string;
+  midtransIsProduction?: boolean;
 }
 
 const defaultConfig: AppConfig = {
@@ -85,6 +87,14 @@ function parseGenAiBaseUrl(value: string | undefined): string | undefined {
   return url.toString().replace(/\/+$/, "");
 }
 
+function parseBoolean(value: string | undefined, name: string): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 function parseCorsOrigin(value: string | undefined): string | string[] {
   if (value === undefined) return defaultConfig.corsOrigin;
 
@@ -145,6 +155,8 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
   }
   if (nodeEnv === "production" && !env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required in production");
   if (nodeEnv === "production" && !env.CORS_ORIGIN?.trim()) throw new Error("CORS_ORIGIN is required in production");
+  const midtransServerKey = env.MIDTRANS_SERVER_KEY?.trim() || undefined;
+  if (nodeEnv === "production" && !midtransServerKey) throw new Error("MIDTRANS_SERVER_KEY is required in production");
   return {
     nodeEnv,
     port: parsePort(env.PORT),
@@ -157,5 +169,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): A
     genAiModel,
     genAiTimeoutMs,
     genAiMode,
+    midtransServerKey,
+    midtransIsProduction: parseBoolean(env.MIDTRANS_IS_PRODUCTION, "MIDTRANS_IS_PRODUCTION"),
   };
 }

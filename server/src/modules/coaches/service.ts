@@ -1,9 +1,9 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { bookings, coachServices, coaches, packages, schedules, services } from "../../db/schema";
 import type { Database } from "../../db/client";
 import type { AuthRepository } from "../auth/schema";
 import { AppError } from "../../shared/errors";
-import type { CatalogRepository, CoachInput, CoachPatch, CoachRecord, PackageRecord, ScheduleRecord } from "./schema";
+import type { CatalogRepository, CoachInput, CoachPatch, CoachRecord, PackageRecord, ScheduleRecord, ServiceInput, ServiceRecord } from "./schema";
 
 type DbExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -25,7 +25,8 @@ export class DrizzleCatalogRepository implements CatalogRepository {
   }
   async listCoaches() {
     const rows = await this.db.select().from(coaches);
-    return Promise.all(rows.map(async (row: typeof coaches.$inferSelect) => coach(row, (await this.listServicesForCoach(row.id)).map((item) => item.id))));
+    const links: { coachId: string; serviceId: string }[] = rows.length ? await this.db.select({ coachId: coachServices.coachId, serviceId: coachServices.serviceId }).from(coachServices) : [];
+    return rows.map((row: typeof coaches.$inferSelect) => coach(row, links.filter((link) => link.coachId === row.id).map((link) => link.serviceId)));
   }
   async findCoach(id: string) { const rows = await this.db.select().from(coaches).where(eq(coaches.id, id)).limit(1); return rows[0] ? coach(rows[0], (await this.listServicesForCoach(id)).map((item) => item.id)) : null; }
   async insertCoach(input: Omit<CoachRecord, "id" | "serviceIds" | "createdAt" | "updatedAt">) { const rows = await this.db.insert(coaches).values(input).returning(); return coach(rows[0]); }
@@ -40,11 +41,20 @@ export class DrizzleCatalogRepository implements CatalogRepository {
   }
   async listServicesByIds(ids: string[]) { if (!ids.length) return []; return this.db.select().from(services).where(inArray(services.id, ids)); }
   async listServicesForCoach(coachId: string) { const rows = await this.db.select({ service: services }).from(coachServices).innerJoin(services, eq(coachServices.serviceId, services.id)).where(eq(coachServices.coachId, coachId)); return rows.map((row) => row.service); }
+  async listServices(activeOnly = false): Promise<ServiceRecord[]> { return this.db.select().from(services).where(activeOnly ? eq(services.active, true) : undefined).orderBy(asc(services.name)); }
+  async findService(id: string): Promise<ServiceRecord | null> { const rows = await this.db.select().from(services).where(eq(services.id, id)).limit(1); return rows[0] ?? null; }
+  async findServiceByName(name: string): Promise<ServiceRecord | null> { const rows = await this.db.select().from(services).where(sql`lower(${services.name}) = lower(${name})`).limit(1); return rows[0] ?? null; }
+  async insertService(input: ServiceInput): Promise<ServiceRecord> { const rows = await this.db.insert(services).values(input).returning(); return rows[0]; }
+  async updateService(id: string, patch: Partial<ServiceInput>): Promise<ServiceRecord | null> { const rows = await this.db.update(services).set({ ...patch, updatedAt: new Date() }).where(eq(services.id, id)).returning(); return rows[0] ?? null; }
   async listPackages(status?: PackageRecord["status"]) { return this.db.select().from(packages).where(status ? eq(packages.status, status) : undefined); }
   async findPackage(id: string) { const rows = await this.db.select().from(packages).where(eq(packages.id, id)).limit(1); return rows[0] ?? null; }
   async insertPackage(input: Omit<PackageRecord, "id" | "createdAt" | "updatedAt">) { const rows = await this.db.insert(packages).values(input).returning(); return rows[0]; }
   async updatePackage(id: string, patch: Partial<Omit<PackageRecord, "id" | "createdAt" | "updatedAt">>) { const rows = await this.db.update(packages).set({ ...patch, updatedAt: new Date() }).where(eq(packages.id, id)).returning(); return rows[0] ?? null; }
   async listSchedules() { return this.db.select().from(schedules); }
+  async listScheduleDetails() {
+    const rows = await this.db.select({ schedule: schedules, coachName: coaches.name, serviceName: services.name }).from(schedules).innerJoin(coaches, eq(schedules.coachId, coaches.id)).innerJoin(services, eq(schedules.serviceId, services.id));
+    return rows.map((row: { schedule: typeof schedules.$inferSelect; coachName: string; serviceName: string }) => ({ ...row.schedule, coachName: row.coachName, serviceName: row.serviceName }));
+  }
   async findSchedule(id: string) {
     const query = this.db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
     const rows = await (this.inTransaction ? query.for("update") : query);
@@ -59,7 +69,11 @@ export function createCatalogRepository(db: Database): CatalogRepository { retur
 
 export class CoachService {
   constructor(readonly repository: CatalogRepository, readonly authRepository: AuthRepository) {}
-  async list() { return (await this.repository.listCoaches()).map(serializeCoach); }
+  async list() {
+    const items = await this.repository.listCoaches();
+    const services = await this.repository.listServicesByIds([...new Set(items.flatMap((item) => item.serviceIds))]);
+    return items.map((item) => serializeCoach(item, services));
+  }
   async create(input: CoachInput) {
     const serviceIds = uniqueIds(input.serviceIds);
     validateName(input.name);
@@ -67,7 +81,7 @@ export class CoachService {
       await assertServices(tx, serviceIds);
       const created = await tx.insertCoach({ name: input.name.trim(), phone: cleanNullable(input.phone), specialty: cleanNullable(input.specialty), bio: cleanNullable(input.bio), status: input.status ?? "active" });
       await tx.replaceCoachServices(created.id, serviceIds);
-      return serializeCoach((await tx.findCoach(created.id))!);
+      return this.serializeWithServices(tx, (await tx.findCoach(created.id))!);
     });
   }
   async update(id: string, input: CoachPatch) {
@@ -81,11 +95,15 @@ export class CoachService {
       if (input.name !== undefined) validateName(input.name);
       await tx.updateCoach(id, patch);
       if (input.serviceIds !== undefined) await tx.replaceCoachServices(id, serviceIds);
-      return serializeCoach((await tx.findCoach(id))!);
+      return this.serializeWithServices(tx, (await tx.findCoach(id))!);
     });
   }
+  private async serializeWithServices(repository: CatalogRepository, item: CoachRecord) { return serializeCoach(item, await repository.listServicesByIds(item.serviceIds)); }
 }
 
 async function assertServices(repository: CatalogRepository, ids: string[]) { const found = await repository.listServicesByIds(ids); if (found.length !== ids.length) throw new AppError("BAD_REQUEST", "One or more services were not found", 400); }
 function validateName(name: string) { if (!name.trim()) throw new AppError("BAD_REQUEST", "Coach name is required", 400); }
-export function serializeCoach(item: CoachRecord) { return { ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
+export function serializeCoach(item: CoachRecord, services: ServiceRecord[] = []) {
+  const byId = new Map(services.map((service) => [service.id, service.name]));
+  return { ...item, services: item.serviceIds.filter((id) => byId.has(id)).map((id) => ({ id, name: byId.get(id)! })), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
+}

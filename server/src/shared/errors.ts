@@ -12,6 +12,7 @@ export type ErrorCode =
   | "NO_AVAILABLE_SCHEDULE"
   | "SCHEDULE_UNAVAILABLE"
   | "BOOKING_STATE_CHANGED"
+  | "PAYMENT_GATEWAY_UNAVAILABLE"
   | "INTERNAL_SERVER_ERROR";
 
 export interface ErrorDetails {

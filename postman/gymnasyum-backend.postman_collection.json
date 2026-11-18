@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6e0d6e0d-9f0f-4f08-8f39-9a4d9a4d0001",
     "name": "Gymnasyum Backend API",
-    "description": "Ordered happy-path and negative API verification flow for the Gymnasyum backend. Run with the local environment against a development database seeded with the demo admin and catalog service records.",
+    "description": "Ordered happy-path and negative API verification flow for the Gymnasyum backend. Run with the local environment against a development database seeded with the demo admin and catalog service records. Midtrans webhook requests sign notifications with the midtransServerKey environment variable; leave it as the default when the backend runs without MIDTRANS_SERVER_KEY (stub gateway), or set it to the sandbox server key otherwise.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -467,6 +467,223 @@
               }
             }
           ]
+        },
+        {
+          "name": "Customer change password",
+          "request": {
+            "method": "POST",
+            "description": "Customer changes password. Expected: HTTP 200; returns a new token pair and revokes previous sessions. The next request changes it back so the collection stays re-runnable.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{customerPassword}}\",\n  \"newPassword\": \"{{customerPassword}}-changed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"new access token returned\", function () { pm.expect(body.accessToken).to.be.a(\"string\"); });",
+                  "pm.test(\"new refresh token returned\", function () { pm.expect(body.refreshToken).to.be.a(\"string\"); });",
+                  "pm.environment.set(\"previousCustomerRefreshToken\", pm.environment.get(\"customerRefreshToken\"));",
+                  "pm.environment.set(\"customerAccessToken\", body.accessToken);",
+                  "pm.environment.set(\"customerRefreshToken\", body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Old refresh token revoked after password change",
+          "request": {
+            "method": "POST",
+            "description": "Negative check. Refresh tokens issued before the password change are revoked. Expected: HTTP 401.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{previousCustomerRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change password with wrong current password",
+          "request": {
+            "method": "POST",
+            "description": "Negative check. Wrong currentPassword returns 400 (not 401) so the frontend does not log the user out. Expected: HTTP 400.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"definitely-wrong-password\",\n  \"newPassword\": \"another-password-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer restore original password",
+          "request": {
+            "method": "POST",
+            "description": "Restores the original customer password. Expected: HTTP 200; saves the new token pair.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{customerPassword}}-changed\",\n  \"newPassword\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set(\"customerAccessToken\", body.accessToken);",
+                  "pm.environment.set(\"customerRefreshToken\", body.refreshToken);",
+                  "pm.environment.unset(\"previousCustomerRefreshToken\");"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -691,6 +908,116 @@
               }
             }
           ]
+        },
+        {
+          "name": "Admin update own name",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin updates own display name from the token (users table). Expected: HTTP 200; returns the updated user.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gymnasyum Admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"name updated\", function () { pm.expect(body.name).to.eql(\"Gymnasyum Admin\"); });",
+                  "pm.test(\"role unchanged\", function () { pm.expect(body.role).to.eql(\"admin\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Empty name rejected on /users/me",
+          "request": {
+            "method": "PATCH",
+            "description": "Negative check. Whitespace-only names are rejected. Expected: HTTP 400.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -798,6 +1125,171 @@
           ]
         },
         {
+          "name": "Update my member profile via /me",
+          "request": {
+            "method": "PATCH",
+            "description": "Customer updates own member profile; the member is resolved from the token, not the URL. status is ignored. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/members/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight\": \"75.5\",\n  \"height\": \"180\",\n  \"bloodType\": \"O+\",\n  \"medicalHistory\": \"None\",\n  \"status\": \"suspended\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"member resolved from token\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"memberId\")); });",
+                  "pm.test(\"weight updated\", function () { pm.expect(Number(body.weight)).to.eql(75.5); });",
+                  "pm.test(\"status cannot be changed by customer\", function () { pm.expect(body.status).to.eql(\"active\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid weight rejected on /members/me",
+          "request": {
+            "method": "PATCH",
+            "description": "Negative validation check. weight/height must be numeric strings. Expected: HTTP 422.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/members/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight\": \"heavy\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 422\", function () { pm.response.to.have.status(422); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin cannot patch /members/me",
+          "request": {
+            "method": "PATCH",
+            "description": "Negative role check. /members/me updates are customer-only. Expected: HTTP 403.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/members/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "members",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight\": \"70\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Admin list members",
           "request": {
             "method": "GET",
@@ -872,6 +1364,409 @@
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "const body = pm.response.json();",
                   "pm.test(\"member id exists\", function () { pm.expect(body.id).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "Customer list active services",
+          "request": {
+            "method": "GET",
+            "description": "Any authenticated user lists active services. Expected: HTTP 200; every item is active.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"response is an array\", function () { pm.expect(body).to.be.an(\"array\"); });",
+                  "pm.test(\"only active services\", function () { body.forEach(function (item) { pm.expect(item.active).to.eql(true); }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cannot include inactive services",
+          "request": {
+            "method": "GET",
+            "description": "Negative role check. Only admins can list inactive services. Expected: HTTP 403.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services?includeInactive=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ],
+              "query": [
+                {
+                  "key": "includeInactive",
+                  "value": "true"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer cannot create service",
+          "request": {
+            "method": "POST",
+            "description": "Negative role check. Expected: HTTP 403.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Forbidden Service\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin create service",
+          "request": {
+            "method": "POST",
+            "description": "Admin creates a catalog service with a unique name. Expected: HTTP 200; saves newServiceId.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{newServiceName}}\",\n  \"description\": \"Created by Postman\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"newServiceName\", \"Postman Pilates \" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set(\"newServiceId\", body.id);",
+                  "pm.test(\"service id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
+                  "pm.test(\"service is active\", function () { pm.expect(body.active).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate service name rejected",
+          "request": {
+            "method": "POST",
+            "description": "Negative check. Service names are unique (case-insensitive). Expected: HTTP 409.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{newServiceName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin deactivate service",
+          "request": {
+            "method": "PATCH",
+            "description": "Admin partially updates a service. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/services/{{newServiceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services",
+                "{{newServiceId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Deactivated by Postman\",\n  \"active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"service deactivated\", function () { pm.expect(body.active).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin list services including inactive",
+          "request": {
+            "method": "GET",
+            "description": "Admin catalog view including inactive services. Expected: HTTP 200; contains the deactivated service.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services?includeInactive=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ],
+              "query": [
+                {
+                  "key": "includeInactive",
+                  "value": "true"
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"inactive service is listed\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"newServiceId\") && item.active === false; })).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Inactive service hidden from active list",
+          "request": {
+            "method": "GET",
+            "description": "Default list hides inactive services. Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"inactive service is hidden\", function () { pm.expect(body.some(function (item) { return item.id === pm.environment.get(\"newServiceId\"); })).to.eql(false); });"
                 ]
               }
             }
@@ -969,7 +1864,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });",
+                  "pm.test(\"coaches include services with names\", function () { pm.response.json().forEach(function (coach) { pm.expect(coach.services).to.be.an(\"array\"); }); });"
                 ]
               }
             }
@@ -1025,7 +1921,8 @@
                   "pm.environment.set(\"coachId\", body.id);",
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "pm.test(\"coach id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
-                  "pm.test(\"coach services exist\", function () { pm.expect(body.serviceIds).to.not.be.undefined; });"
+                  "pm.test(\"coach services exist\", function () { pm.expect(body.serviceIds).to.not.be.undefined; });",
+                  "pm.test(\"coach service names are joined\", function () { pm.expect(body.services).to.be.an(\"array\"); pm.expect(body.services[0].name).to.be.a(\"string\"); });"
                 ]
               }
             }
@@ -1504,7 +2401,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                  "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });",
+                  "pm.test(\"schedules include coach and service names\", function () { pm.response.json().forEach(function (item) { pm.expect(item.coachName).to.be.a(\"string\"); pm.expect(item.serviceName).to.be.a(\"string\"); }); });"
                 ]
               }
             }
@@ -1621,7 +2519,10 @@
                   "pm.test(\"payment id exists\", function () { pm.expect(body.id).to.not.be.undefined; });",
                   "pm.test(\"member id exists\", function () { pm.expect(body.memberId).to.not.be.undefined; });",
                   "pm.test(\"payment status exists\", function () { pm.expect(body.status).to.not.be.undefined; });",
-                  "pm.expect(pm.response.json().status).to.eql(\"pending\");"
+                  "pm.expect(pm.response.json().status).to.eql(\"pending\");",
+                  "pm.environment.set(\"snapToken\", body.snapToken);",
+                  "pm.test(\"snap token returned\", function () { pm.expect(body.snapToken).to.be.a(\"string\").and.not.empty; });",
+                  "pm.test(\"snap redirect url returned\", function () { pm.expect(body.snapRedirectUrl).to.be.a(\"string\").and.not.empty; });"
                 ]
               }
             }
@@ -1800,6 +2701,334 @@
                 "exec": [
                   "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
                   "pm.test(\"response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer poll payment status",
+          "request": {
+            "method": "GET",
+            "description": "Lightweight polling endpoint for one payment (owner or admin). Expected: HTTP 200.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment id matches\", function () { pm.expect(body.id).to.eql(pm.environment.get(\"paymentId\")); });",
+                  "pm.test(\"snap token persisted\", function () { pm.expect(body.snapToken).to.eql(pm.environment.get(\"snapToken\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer create payment for webhook",
+          "request": {
+            "method": "POST",
+            "description": "Creates a second pending payment that is settled by the Midtrans webhook below. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"packageId\": \"{{packageId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set(\"webhookPaymentId\", body.id);",
+                  "pm.environment.set(\"webhookPaymentAmount\", body.amount);",
+                  "pm.test(\"payment is pending\", function () { pm.expect(body.status).to.eql(\"pending\"); });",
+                  "pm.test(\"snap token returned\", function () { pm.expect(body.snapToken).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Midtrans webhook rejects invalid signature",
+          "request": {
+            "method": "POST",
+            "description": "Public Midtrans notification endpoint. A forged signature is rejected. Expected: HTTP 403.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "webhook"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{webhookPaymentId}}\",\n  \"status_code\": \"{{webhookStatusCode}}\",\n  \"gross_amount\": \"{{webhookPaymentAmount}}\",\n  \"signature_key\": \"invalid-signature\",\n  \"transaction_status\": \"settlement\",\n  \"fraud_status\": \"accept\",\n  \"payment_type\": \"bank_transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const serverKey = pm.environment.get(\"midtransServerKey\") || \"development-midtrans-server-key\";",
+                  "const orderId = pm.environment.get(\"webhookPaymentId\");",
+                  "const grossAmount = pm.environment.get(\"webhookPaymentAmount\");",
+                  "const statusCode = \"200\";",
+                  "pm.environment.set(\"webhookStatusCode\", statusCode);",
+                  "pm.environment.set(\"webhookSignature\", CryptoJS.SHA512(orderId + statusCode + grossAmount + serverKey).toString(CryptoJS.enc.Hex));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"response status is 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"error envelope exists\", function () { pm.expect(pm.response.json().error).to.not.be.undefined; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Midtrans webhook settlement",
+          "request": {
+            "method": "POST",
+            "description": "Simulates a Midtrans settlement notification (no JWT). The signature is computed in the pre-request script with midtransServerKey (defaults to the backend stub key). Expected: HTTP 200; payment becomes paid and a subscription is created.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "webhook"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{webhookPaymentId}}\",\n  \"status_code\": \"{{webhookStatusCode}}\",\n  \"gross_amount\": \"{{webhookPaymentAmount}}\",\n  \"signature_key\": \"{{webhookSignature}}\",\n  \"transaction_status\": \"settlement\",\n  \"fraud_status\": \"accept\",\n  \"payment_type\": \"bank_transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const serverKey = pm.environment.get(\"midtransServerKey\") || \"development-midtrans-server-key\";",
+                  "const orderId = pm.environment.get(\"webhookPaymentId\");",
+                  "const grossAmount = pm.environment.get(\"webhookPaymentAmount\");",
+                  "const statusCode = \"200\";",
+                  "pm.environment.set(\"webhookStatusCode\", statusCode);",
+                  "pm.environment.set(\"webhookSignature\", CryptoJS.SHA512(orderId + statusCode + grossAmount + serverKey).toString(CryptoJS.enc.Hex));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"notification received\", function () { pm.expect(body.received).to.eql(true); });",
+                  "pm.test(\"payment marked paid\", function () { pm.expect(body.status).to.eql(\"paid\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Midtrans webhook retry is idempotent",
+          "request": {
+            "method": "POST",
+            "description": "Midtrans retries notifications; a repeated settlement does not create another subscription. Expected: HTTP 200.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "webhook"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{webhookPaymentId}}\",\n  \"status_code\": \"{{webhookStatusCode}}\",\n  \"gross_amount\": \"{{webhookPaymentAmount}}\",\n  \"signature_key\": \"{{webhookSignature}}\",\n  \"transaction_status\": \"settlement\",\n  \"fraud_status\": \"accept\",\n  \"payment_type\": \"bank_transfer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const serverKey = pm.environment.get(\"midtransServerKey\") || \"development-midtrans-server-key\";",
+                  "const orderId = pm.environment.get(\"webhookPaymentId\");",
+                  "const grossAmount = pm.environment.get(\"webhookPaymentAmount\");",
+                  "const statusCode = \"200\";",
+                  "pm.environment.set(\"webhookStatusCode\", statusCode);",
+                  "pm.environment.set(\"webhookSignature\", CryptoJS.SHA512(orderId + statusCode + grossAmount + serverKey).toString(CryptoJS.enc.Hex));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment stays paid\", function () { pm.expect(body.status).to.eql(\"paid\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer poll settled payment",
+          "request": {
+            "method": "GET",
+            "description": "Frontend polling after Snap closes. Expected: HTTP 200; status paid with a subscription.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{webhookPaymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{webhookPaymentId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"response status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"payment is paid\", function () { pm.expect(body.status).to.eql(\"paid\"); });",
+                  "pm.test(\"subscription created\", function () { pm.expect(body.subscriptionId).to.be.a(\"string\"); });",
+                  "pm.test(\"payment method from notification\", function () { pm.expect(body.method).to.eql(\"bank_transfer\"); });"
                 ]
               }
             }

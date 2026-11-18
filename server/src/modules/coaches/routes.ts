@@ -7,7 +7,7 @@ const status = t.Union([t.Literal("active"), t.Literal("inactive"), t.Literal("s
 const nullableString = t.Optional(t.Union([t.String(), t.Null()]));
 const coachBody = t.Object({ name: t.String({ minLength: 1 }), phone: nullableString, specialty: nullableString, bio: nullableString, status: t.Optional(status), serviceIds: t.Optional(t.Array(t.String({ minLength: 1 }))) });
 const coachPatch = t.Partial(coachBody);
-const coachResponse = t.Object({ id: t.String(), name: t.String(), phone: t.Union([t.String(), t.Null()]), specialty: t.Union([t.String(), t.Null()]), bio: t.Union([t.String(), t.Null()]), status, serviceIds: t.Array(t.String()), createdAt: t.String(), updatedAt: t.String() });
+const coachResponse = t.Object({ id: t.String(), name: t.String(), phone: t.Union([t.String(), t.Null()]), specialty: t.Union([t.String(), t.Null()]), bio: t.Union([t.String(), t.Null()]), status, serviceIds: t.Array(t.String()), services: t.Array(t.Object({ id: t.String(), name: t.String() })), createdAt: t.String(), updatedAt: t.String() });
 
 export function coachRoutes(app: AnyElysia, service: CoachService, auth: AuthRepository) {
   return app

@@ -6,7 +6,7 @@ import type { AuthRepository } from "../auth/schema";
 const scheduleStatus = t.Union([t.Literal("available"), t.Literal("full"), t.Literal("cancelled")]);
 const scheduleBody = t.Object({ title: t.String({ minLength: 1 }), coachId: t.String({ minLength: 1 }), serviceId: t.String({ minLength: 1 }), startsAt: t.String({ format: "date-time" }), endsAt: t.String({ format: "date-time" }), capacity: t.Integer({ minimum: 1 }), status: t.Optional(scheduleStatus) });
 const schedulePatch = t.Partial(scheduleBody);
-const scheduleResponse = t.Object({ id: t.String(), title: t.String(), coachId: t.String(), serviceId: t.String(), startsAt: t.String(), endsAt: t.String(), capacity: t.Number(), bookedCount: t.Number(), status: scheduleStatus, createdAt: t.String(), updatedAt: t.String() });
+const scheduleResponse = t.Object({ id: t.String(), title: t.String(), coachId: t.String(), coachName: t.String(), serviceId: t.String(), serviceName: t.String(), startsAt: t.String(), endsAt: t.String(), capacity: t.Number(), bookedCount: t.Number(), status: scheduleStatus, createdAt: t.String(), updatedAt: t.String() });
 
 export function scheduleRoutes(app: AnyElysia, service: ScheduleService, auth: AuthRepository) {
   return app

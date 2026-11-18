@@ -36,6 +36,7 @@ test("production requires HTTP Gen AI configuration and validates timeout", () =
     CORS_ORIGIN: "https://example.com",
     JWT_SECRET: "a".repeat(32),
     JWT_REFRESH_SECRET: "b".repeat(32),
+    MIDTRANS_SERVER_KEY: "midtrans-test-server-key",
   } as const;
   expect(() => loadConfig(base)).toThrow("GEN_AI_BASE_URL");
   expect(() => loadConfig({ ...base, GEN_AI_MODE: "http", GEN_AI_BASE_URL: "https://ai.example", GEN_AI_API_KEY: "secret", GEN_AI_TIMEOUT_MS: "0" })).toThrow("GEN_AI_TIMEOUT_MS");
