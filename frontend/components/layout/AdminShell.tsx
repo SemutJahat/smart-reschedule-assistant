@@ -12,6 +12,7 @@ import {
   Users,
   Calendar,
   Folder,
+  CreditCard,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     { href: "/admin", label: "Validasi Reschedule", icon: LayoutDashboard },
     { href: "/admin/jadwal", label: "Jadwal & Coach", icon: Calendar },
     { href: "/admin/pengguna", label: "Data Pengguna", icon: Users },
+    { href: "/admin/pembayaran", label: "Pembayaran", icon: CreditCard },
     { href: "/admin/katalog", label: "Katalog Layanan", icon: Folder },
   ];
 

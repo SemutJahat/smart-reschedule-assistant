@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Calendar,
+  CalendarPlus,
   ShoppingBag,
   Package,
   LogOut,
@@ -24,6 +25,7 @@ export function CustomerShell({ children }: { children: React.ReactNode }) {
 
   const menuItems = [
     { href: "/customer", label: "Jadwal Saya", icon: Calendar },
+    { href: "/customer/pesan-jadwal", label: "Pesan Jadwal", icon: CalendarPlus },
     { href: "/customer/paket", label: "Paket & Kuota", icon: Package },
     { href: "/customer/beli-paket", label: "Beli Paket", icon: ShoppingBag },
   ];

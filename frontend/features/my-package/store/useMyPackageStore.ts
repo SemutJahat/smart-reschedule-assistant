@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import {
-  SubscriptionDTO,
-  PaymentDTO,
-  MOCK_SUBSCRIPTIONS,
-  MOCK_PAYMENTS,
-} from "../schemas";
+  getAllPackages,
+  getMyPayments,
+  getMySubscriptions,
+} from "@/lib/api/my-package";
+import type { PaymentDTO, SubscriptionDTO } from "../schemas";
 
 interface MyPackageState {
   subscriptions: SubscriptionDTO[];
@@ -16,6 +16,9 @@ interface MyPackageState {
   reset: () => void;
 }
 
+const newestFirst = (a: { createdAt: string }, b: { createdAt: string }) =>
+  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
 export const useMyPackageStore = create<MyPackageState>((set) => ({
   subscriptions: [],
   payments: [],
@@ -26,31 +29,32 @@ export const useMyPackageStore = create<MyPackageState>((set) => ({
     set({ status: "loading", error: null });
 
     try {
-      // Simulasi jeda jaringan (network latency) selama 1.5 detik
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const [subs, payments, packages] = await Promise.all([
+        getMySubscriptions(signal),
+        getMyPayments(signal),
+        getAllPackages(signal).catch(() => []),
+      ]);
 
-      // Simulasi pengecekan pembatalan request (AbortController)
       if (signal?.aborted) return;
 
-      // --- KELAK GANTI BAGIAN INI DENGAN PEMANGGILAN API ASLI ---
-      // const [subsData, paymentsData] = await Promise.all([
-      //   apiClient<SubscriptionDTO[]>("/subscriptions/me", { signal }),
-      //   apiClient<PaymentDTO[]>("/payments/me", { signal })
-      // ]);
-
-      const subsData = MOCK_SUBSCRIPTIONS;
-      const paymentsData = MOCK_PAYMENTS;
+      const names = new Map(packages.map((p) => [p.id, p.name]));
+      const nameOf = (id: string) => names.get(id) ?? "Paket";
 
       set({
-        subscriptions: subsData,
-        payments: paymentsData,
+        subscriptions: subs
+          .map((s) => ({ ...s, packageName: nameOf(s.packageId) }))
+          .sort(newestFirst),
+        payments: payments
+          .map((p) => ({ ...p, packageName: nameOf(p.packageId) }))
+          .sort(newestFirst),
         status: "success",
       });
-    } catch (error: any) {
-      if (error.name === "AbortError") return;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
       set({
         error:
-          error.message || "Gagal memuat data paket dan riwayat transaksi.",
+          (error instanceof Error && error.message) ||
+          "Gagal memuat data paket dan riwayat transaksi.",
         status: "error",
       });
     }

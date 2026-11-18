@@ -32,7 +32,9 @@ export interface ScheduleDTO {
   id: string;
   title: string;
   coachId: string;
+  coachName?: string;
   serviceId: string;
+  serviceName?: string;
   startsAt: string;
   endsAt: string;
   capacity: number;

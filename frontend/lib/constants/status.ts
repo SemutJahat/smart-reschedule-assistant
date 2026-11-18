@@ -5,7 +5,8 @@ export type StatusDomain =
   | "schedule"
   | "booking"
   | "payment"
-  | "subscription";
+  | "subscription"
+  | "reschedule";
 
 type StatusConfig = {
   label: string;
@@ -105,6 +106,28 @@ export const STATUS_CONFIG: Record<
     },
     refunded: {
       label: "Dikembalikan",
+      color: "bg-gray-100 text-gray-500 border-gray-200",
+    },
+  },
+  reschedule: {
+    pending: {
+      label: "Menunggu",
+      color: "bg-orange-50 text-orange-600 border-orange-100",
+    },
+    held: {
+      label: "Ditunda",
+      color: "bg-blue-50 text-blue-600 border-blue-100",
+    },
+    approved: {
+      label: "Disetujui",
+      color: "bg-[#65C466]/10 text-[#52A353] border-[#65C466]/20",
+    },
+    rejected: {
+      label: "Ditolak",
+      color: "bg-red-50 text-red-600 border-red-100",
+    },
+    cancelled: {
+      label: "Dibatalkan",
       color: "bg-gray-100 text-gray-500 border-gray-200",
     },
   },
