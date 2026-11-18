@@ -323,7 +323,11 @@ export class ChatService {
         if (!await tx.booking.findSchedule(booking.scheduleId, true)) throw coded("BOOKING_STATE_CHANGED", "Booking source schedule no longer exists");
         const requests = await tx.reschedule.listRequests({ memberId: member.id });
         if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");
-        if (await tx.chat.findActiveSession(booking.id)) throw conflict("An active chat session already exists");
+        const existing = await tx.chat.findActiveSession(booking.id);
+        if (existing) {
+          if (existing.memberId !== member.id) throw conflict("An active chat session already exists");
+          return existing;
+        }
         return tx.chat.insertSession({ memberId: member.id, bookingId: booking.id, sourceScheduleId: booking.scheduleId, currentIntent: null, status: "active" });
       });
       return serializeSession(session);
