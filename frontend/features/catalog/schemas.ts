@@ -37,6 +37,19 @@ export const packageSchema = z.object({
 export type PackageFormInput = z.input<typeof packageSchema>;
 export type PackageFormData = z.output<typeof packageSchema>;
 
+export const serviceFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Nama layanan wajib diisi")
+    .max(120, "Nama layanan maksimal 120 karakter"),
+  description: z.string().optional(),
+  active: z.boolean(),
+});
+
+export type ServiceFormInput = z.input<typeof serviceFormSchema>;
+export type ServiceFormData = z.output<typeof serviceFormSchema>;
+
 // Tipe data (DTO) yang sesuai dengan respons backend
 export interface PackageDTO {
   id: string;

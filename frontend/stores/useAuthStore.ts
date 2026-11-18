@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export interface AuthUser {
   id: string;
@@ -8,6 +10,7 @@ export interface AuthUser {
   email: string;
   role: "admin" | "customer";
 }
+
 interface AuthState {
   user: AuthUser | null;
   token: string | null;
@@ -28,7 +31,7 @@ interface AuthState {
     phone?: string,
   ) => Promise<boolean>;
   setSession: (user: AuthUser, token: string, refreshToken?: string) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void; // <-- Fungsi pembaruan token
+  setTokens: (accessToken: string, refreshToken: string) => void;
   logout: () => void;
   clearError: () => void;
   getToken: () => string | undefined;
@@ -64,14 +67,11 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password, role) => {
         set({ isLoading: true, error: null });
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/auth/login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, password, role }),
-            },
-          );
+          const res = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password, role }),
+          });
 
           if (!res.ok) {
             let errData: any;
@@ -101,19 +101,16 @@ export const useAuthStore = create<AuthState>()(
       register: async (name, email, password, phone) => {
         set({ isLoading: true, error: null });
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/auth/register`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name,
-                email,
-                password,
-                phone: phone?.trim() || null,
-              }),
-            },
-          );
+          const res = await fetch(`${API_BASE_URL}/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              email,
+              password,
+              phone: phone?.trim() || null,
+            }),
+          });
 
           const data = await res.json().catch(() => null);
           if (!res.ok) {
@@ -154,6 +151,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const { refreshToken } = get();
         set({
           user: null,
           token: null,
@@ -161,6 +159,14 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
         });
+        if (refreshToken) {
+          void fetch(`${API_BASE_URL}/auth/logout`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ refreshToken }),
+            keepalive: true,
+          }).catch(() => undefined);
+        }
       },
     }),
     {

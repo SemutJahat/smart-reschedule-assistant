@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { apiClient } from "@/lib/api/client";
 import * as serviceApi from "@/lib/api/services";
-import type { PackageDTO, PackageFormData } from "../schemas";
+import type { PackageDTO, PackageFormData, ServiceFormData } from "../schemas";
 
 type FetchStatus = "idle" | "loading" | "success" | "error";
 
@@ -19,6 +19,16 @@ interface CatalogState {
 
   services: serviceApi.ServiceDTO[];
   fetchServices: (signal?: AbortSignal) => Promise<void>;
+
+  adminServices: serviceApi.ServiceDTO[];
+  adminServicesStatus: FetchStatus;
+  adminServicesError: string | null;
+  fetchAdminServices: (signal?: AbortSignal) => Promise<void>;
+  createService: (data: ServiceFormData) => Promise<void>;
+  updateService: (
+    id: string,
+    data: Partial<serviceApi.ServiceInput>,
+  ) => Promise<void>;
 
   reset: () => void;
 }
@@ -96,11 +106,51 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
     }
   },
 
+  adminServices: [],
+  adminServicesStatus: "idle",
+  adminServicesError: null,
+
+  fetchAdminServices: async (signal) => {
+    set({ adminServicesStatus: "loading", adminServicesError: null });
+    try {
+      const data = await serviceApi.getAllServices(signal);
+      set({ adminServices: data, adminServicesStatus: "success" });
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      set({
+        adminServicesError:
+          error instanceof Error ? error.message : "Gagal memuat layanan",
+        adminServicesStatus: "error",
+      });
+    }
+  },
+
+  createService: async (data) => {
+    await serviceApi.createService({
+      name: data.name,
+      description: data.description?.trim() ? data.description.trim() : null,
+      active: data.active,
+    });
+    await Promise.all([get().fetchAdminServices(), get().fetchServices()]);
+  },
+
+  updateService: async (id, data) => {
+    const payload = { ...data };
+    if (typeof payload.description === "string") {
+      payload.description = payload.description.trim() || null;
+    }
+    await serviceApi.updateService(id, payload);
+    await Promise.all([get().fetchAdminServices(), get().fetchServices()]);
+  },
+
   reset: () =>
     set({
       packages: [],
       packagesStatus: "idle",
       packagesError: null,
       services: [],
+      adminServices: [],
+      adminServicesStatus: "idle",
+      adminServicesError: null,
     }),
 }));

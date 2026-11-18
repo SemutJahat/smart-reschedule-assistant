@@ -1,21 +1,23 @@
 export type ChatRole = "user" | "assistant" | "system";
-export type AnalysisStatus = "pending" | "completed" | "failed";
 export type ChatIntent =
   | "Reschedule"
   | "Cancel"
   | "Schedule inquiry"
   | "Confirmation"
   | "Other";
+export type ChatSessionStatus =
+  | "active"
+  | "awaiting_confirmation"
+  | "submitted"
+  | "closed";
 
-// DTO untuk gelembung pesan
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
-  createdAt: string;
+  createdAt?: string;
 }
 
-// DTO untuk opsi jadwal yang direkomendasikan AI
 export interface RecommendedSchedule {
   id: string;
   title: string;
@@ -23,48 +25,63 @@ export interface RecommendedSchedule {
   coachName: string;
   startsAt: string;
   endsAt: string;
-  remainingCapacity: number;
+  capacity: number;
+  bookedCount: number;
 }
 
-// DTO Hasil Analisis AI
 export interface ChatAnalysis {
   intent: ChatIntent;
   confidence: number;
   recommendedSchedules: RecommendedSchedule[];
 }
 
-// --- DATA MOCK ---
+export interface ChatSessionDTO {
+  id: string;
+  bookingId: string;
+  status: ChatSessionStatus;
+  currentIntent: ChatIntent | null;
+  proposedScheduleId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
-// Pesan awal dari sistem
-export const MOCK_INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: "msg-sys-1",
-    role: "assistant",
-    content: "Halo! Ada yang bisa saya bantu terkait jadwal latihan Anda?",
-    createdAt: new Date().toISOString(),
-  },
-];
+export interface ChatMessageDTO {
+  id: string;
+  role: ChatRole;
+  content: string;
+}
 
-// Simulasi respons AI jika user meminta "reschedule besok pagi"
-const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-tomorrow.setHours(8, 0, 0, 0);
+export interface ChatTurnDTO {
+  session: Pick<
+    ChatSessionDTO,
+    "id" | "status" | "currentIntent" | "proposedScheduleId"
+  >;
+  userMessage: ChatMessageDTO;
+  assistantMessage: ChatMessageDTO;
+  analysis: {
+    intent: ChatIntent;
+    confidence: number;
+    recommendedSchedules: { id: string; startsAt: string; endsAt: string }[];
+  };
+}
 
-export const MOCK_ANALYSIS_RESPONSE: ChatAnalysis = {
-  intent: "Reschedule",
-  confidence: 0.95,
-  recommendedSchedules: [
-    {
-      id: "mock-sched-001",
-      title: "Yoga Pagi Pengganti",
-      serviceName: "Yoga",
-      coachName: "Budi Santoso",
-      startsAt: tomorrow.toISOString(),
-      endsAt: new Date(tomorrow.getTime() + 60 * 60 * 1000).toISOString(),
-      remainingCapacity: 3,
-    },
-  ],
+export interface ChatConfirmationDTO {
+  sessionId: string;
+  status: "submitted";
+  rescheduleRequest: {
+    id: string;
+    bookingId: string;
+    chatSessionId: string | null;
+    fromScheduleId: string;
+    toScheduleId: string;
+    status: "pending" | "held" | "approved" | "rejected" | "cancelled";
+  };
+  message: string;
+}
+
+export const WELCOME_MESSAGE: ChatMessage = {
+  id: "welcome",
+  role: "assistant",
+  content:
+    "Halo! Ceritakan kapan Anda ingin pindah jadwal, nanti saya carikan slot pengganti yang tersedia.",
 };
-
-export const MOCK_ASSISTANT_REPLY =
-  "Tentu, saya menemukan jadwal kosong besok pagi untuk sesi Yoga. Apakah Anda ingin pindah ke jadwal ini?";

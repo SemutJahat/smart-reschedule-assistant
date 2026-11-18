@@ -14,7 +14,8 @@ export default function CustomerDashboardPage() {
   const { isAuthorized, isHydrated } = useRequireRole("customer");
 
   // 2. Akses Store
-  const { upcomingBookings, fetchBookings } = useBookingStore();
+  const { upcomingBookings, pendingRescheduleBookingIds, fetchBookings } =
+    useBookingStore();
   const { subscriptions, fetchMyPackageData } = useMyPackageStore();
 
   // 3. Fetching Data Paralel
@@ -34,10 +35,11 @@ export default function CustomerDashboardPage() {
   if (!isHydrated || !isAuthorized) return null;
 
   // 4. Kalkulasi Angka Statistik
-  const activePackage = subscriptions.find((sub) => sub.status === "active");
-  const remainingQuota = activePackage
-    ? activePackage.totalSessions - activePackage.usedSessions
-    : 0;
+  const activePackages = subscriptions.filter((sub) => sub.status === "active");
+  const remainingQuota = activePackages.reduce(
+    (total, sub) => total + Math.max(0, sub.totalSessions - sub.usedSessions),
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -60,16 +62,18 @@ export default function CustomerDashboardPage() {
           value={`${remainingQuota} Sesi`}
           icon={<Dumbbell size={20} />}
           description={
-            activePackage
-              ? `Dari: ${activePackage.packageName}`
-              : "Belum ada paket aktif"
+            activePackages.length === 0
+              ? "Belum ada paket aktif"
+              : activePackages.length === 1
+                ? `Dari: ${activePackages[0].packageName}`
+                : `Dari ${activePackages.length} paket aktif`
           }
         />
         <StatCard
           title="Reschedule Berjalan"
-          value={0} // Di-hardcode sementara (akan dihubungkan di Fase 4)
+          value={pendingRescheduleBookingIds.length}
           icon={<RefreshCw size={20} />}
-          description="Pengajuan lewat Chat AI (Fase 4)"
+          description="Menunggu persetujuan admin"
         />
       </div>
 

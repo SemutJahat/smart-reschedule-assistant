@@ -1,19 +1,21 @@
 "use client";
 
 import { useRequireRole } from "@/features/auth/hooks/useRequireRole";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { RescheduleQueue } from "@/features/reschedule-review/components/RescheduleQueue";
 
 export default function AdminDashboardPage() {
-  // Hanya dengan 1 baris ini, halaman otomatis terproteksi!
   const { isAuthorized } = useRequireRole("admin");
 
-  if (!isAuthorized) return null; // Tampilkan layar kosong sejenak saat proses redirect
+  if (!isAuthorized) return null;
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold text-[#1E293B]">Validasi Reschedule</h1>
-      <p className="mt-2 text-[#64748B]">
-        Konten antrean request dan draft AI akan muncul di sini nanti.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Validasi Reschedule"
+        description="Tinjau pengajuan pindah jadwal dari member yang dikirim lewat asisten chat."
+      />
+      <RescheduleQueue />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useRequireRole } from "@/features/auth/hooks/useRequireRole";
 import { useMemberStore } from "@/features/members/store/useMemberStore";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { MemberDetail } from "@/features/members/components/MemberDetail";
+import { MemberActivity } from "@/features/members/components/MemberActivity";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { LoadingSkeleton } from "@/components/shared/LoadingSkeleton";
@@ -54,16 +55,7 @@ export default function PenggunaDetailPage() {
       ) : member ? (
         <>
           <MemberDetail memberData={member} />
-          <div className="bg-white p-10 mt-6 rounded-xl border border-[#E2E8F0] shadow-sm text-center">
-            <h3 className="text-lg font-medium text-[#1E293B] mb-2">
-              Riwayat Kelas & Paket
-            </h3>
-            <p className="text-sm text-[#64748B]">
-              Tabel riwayat jadwal (bookings) dan langganan paket
-              (subscriptions) akan ditampilkan di sini setelah modul tersebut
-              selesai diintegrasikan.
-            </p>
-          </div>
+          <MemberActivity memberId={member.id} />
         </>
       ) : (
         <div className="p-10 text-center text-[#64748B] bg-white border border-[#E2E8F0] rounded-xl">

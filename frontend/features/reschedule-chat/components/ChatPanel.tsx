@@ -6,22 +6,35 @@ import { MessageBubble } from "./MessageBubble";
 import { ProposedSlotList } from "./ProposedSlotList";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizontal, Loader2 } from "lucide-react";
 
 export function ChatPanel() {
-  const { messages, isTyping, analysisStatus, sendMessage } = useChatStore();
+  const {
+    messages,
+    isTyping,
+    isInitializing,
+    initError,
+    sessionId,
+    sessionStatus,
+    sendMessage,
+  } = useChatStore();
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo(0, scrollRef.current.scrollHeight);
-    }
-  }, [messages, isTyping, analysisStatus]);
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, isTyping, isInitializing]);
+
+  const isLocked =
+    !sessionId ||
+    isInitializing ||
+    sessionStatus === "submitted" ||
+    sessionStatus === "closed";
+  const canSend = !isLocked && !isTyping && input.trim().length > 0;
 
   const handleSend = () => {
-    if (!input.trim() || isTyping) return;
+    if (!canSend) return;
     const clientMessageId = crypto.randomUUID();
     sendMessage(input, clientMessageId);
     setInput("");
@@ -43,8 +56,10 @@ export function ChatPanel() {
   ];
 
   return (
-    <div className="flex flex-col h-[340px] justify-between">
-      <ScrollArea className="flex-1 pr-2" ref={scrollRef}>
+    <div className="flex flex-col flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
         <div className="space-y-1.5 pb-2">
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
@@ -57,13 +72,26 @@ export function ChatPanel() {
             </div>
           )}
 
+          {isInitializing && (
+            <div className="flex items-center gap-2 text-xs text-[#64748B] ml-2 mt-2">
+              <Loader2 className="animate-spin" size={13} />
+              Menyiapkan sesi chat...
+            </div>
+          )}
+
+          {initError && (
+            <div className="mx-2 mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              {initError}
+            </div>
+          )}
+
           <ProposedSlotList />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Area Komposer (Bawah) */}
-      <div className="pt-2 border-t border-[#E2E8F0] mt-1 shrink-0">
-        {isFirstUserMessage && (
+      <div className="shrink-0 pt-2 border-t border-[#E2E8F0] bg-popover">
+        {isFirstUserMessage && !isLocked && (
           <div className="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
             {suggestedPrompts.map((prompt, idx) => (
               <button
@@ -81,14 +109,18 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ketik permintaan perubahan jadwal..."
+            placeholder={
+              sessionStatus === "submitted"
+                ? "Permintaan sudah dikirim ke admin"
+                : "Ketik permintaan perubahan jadwal..."
+            }
             className="min-h-[42px] max-h-[80px] resize-none bg-[#F8FAFC] text-xs py-2.5"
-            disabled={isTyping || analysisStatus === "pending"}
+            disabled={isLocked || isTyping}
           />
           <Button
             className="h-[42px] w-[42px] bg-[#65C466] hover:bg-[#52A353] flex-shrink-0 cursor-pointer"
             onClick={handleSend}
-            disabled={!input.trim() || isTyping}>
+            disabled={!canSend}>
             <SendHorizontal size={16} />
           </Button>
         </div>

@@ -17,6 +17,7 @@ interface DynamicModalProps {
   description?: string;
   children: ReactNode;
   className?: string;
+  bodyClassName?: string;
 }
 
 export function DynamicModal({
@@ -26,6 +27,7 @@ export function DynamicModal({
   description,
   children,
   className,
+  bodyClassName,
 }: DynamicModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -44,7 +46,11 @@ export function DynamicModal({
         </DialogHeader>
 
         {/* Konten modal fleksibel tanpa scrollbar luar yang kasar */}
-        <div className="flex-1 overflow-y-auto py-1 pr-1 custom-scrollbar">
+        <div
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto py-1 pr-1 custom-scrollbar",
+            bodyClassName,
+          )}>
           {children}
         </div>
       </DialogContent>

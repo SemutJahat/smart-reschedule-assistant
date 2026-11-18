@@ -3,6 +3,7 @@
 import { useModalStore } from "@/stores/useModalStore";
 import { DynamicModal } from "@/components/shared/DynamicModal";
 import { PackageForm } from "@/features/catalog/components/PackageForm";
+import { ServiceForm } from "@/features/catalog/components/ServiceForm";
 import { ConfirmModalContent } from "@/components/shared/ConfirmModalContent";
 import { MemberForm } from "@/features/members/components/MemberForm";
 import { CoachForm } from "@/features/coaches/components/CoachForm";
@@ -20,6 +21,12 @@ export function AdminModalHost() {
       title = props.packageData ? "Ubah Paket" : "Tambah Paket Baru";
       description = "Silakan isi detail paket latihan di bawah ini.";
       content = <PackageForm packageData={props.packageData} />;
+      break;
+
+    case "service-form":
+      title = props.serviceData ? "Edit Layanan" : "Tambah Layanan";
+      description = "Silakan isi detail layanan di bawah ini.";
+      content = <ServiceForm serviceData={props.serviceData} />;
       break;
 
     case "confirm":

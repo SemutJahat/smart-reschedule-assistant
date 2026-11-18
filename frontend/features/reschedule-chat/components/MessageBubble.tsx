@@ -10,10 +10,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isSystem = message.role === "system";
 
   // Format jam (misal: "14:30")
-  const timeString = new Date(message.createdAt).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timeString = message.createdAt
+    ? new Date(message.createdAt).toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   // Tampilan khusus untuk pesan sistem (tengah)
   if (isSystem) {
@@ -43,13 +45,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <span className="leading-relaxed whitespace-pre-wrap">
           {message.content}
         </span>
-        <span
-          className={cn(
-            "text-[10px] text-right",
-            isUser ? "text-green-100" : "text-[#64748B]",
-          )}>
-          {timeString}
-        </span>
+        {timeString && (
+          <span
+            className={cn(
+              "text-[10px] text-right",
+              isUser ? "text-green-100" : "text-[#64748B]",
+            )}>
+            {timeString}
+          </span>
+        )}
       </div>
     </div>
   );
