@@ -4,6 +4,7 @@ import { bookings, rescheduleRequests, schedules } from "../../db/schema";
 import { createId } from "../../shared/ids";
 import type { CatalogRepository, ScheduleRecord } from "../coaches/schema";
 import type { BookingRecord, BookingRepository } from "../bookings/schema";
+import { InMemoryBookingRepository } from "../bookings/repository";
 import type {
   RescheduleRequestInput,
   RescheduleFilters,
@@ -92,11 +93,13 @@ function cloneRequest(item: RescheduleRequestRecord): RescheduleRequestRecord {
 
 /** In-memory requests use the same booking and schedule collections as the existing repositories. */
 export class InMemoryRescheduleRepository implements RescheduleRepository {
-  readonly requests: RescheduleRequestRecord[] = [];
+  readonly requests: RescheduleRequestRecord[];
   readonly databaseEnforcesBookingInvariants = false;
   private transactionTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly bookings: BookingRepository, private readonly catalog: CatalogRepository) {}
+  constructor(private readonly bookings: BookingRepository, private readonly catalog: CatalogRepository) {
+    this.requests = bookings instanceof InMemoryBookingRepository ? bookings.rescheduleRequests : [];
+  }
 
   async transaction<T>(fn: (tx: RescheduleRepository) => Promise<T>): Promise<T> {
     let release!: () => void;

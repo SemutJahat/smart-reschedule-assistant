@@ -1,9 +1,10 @@
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
-import { bookings, schedules, subscriptions } from "../../db/schema";
+import { bookings, rescheduleRequests, schedules, subscriptions } from "../../db/schema";
 import { createId } from "../../shared/ids";
 import type { CatalogBookingRecord, CatalogRepository, ScheduleRecord } from "../coaches/schema";
 import type { PaymentRepository, SubscriptionRecord } from "../payments/schema";
+import type { RescheduleRequestRecord } from "../reschedules/schema";
 import type { BookingFilters, BookingPatch, BookingRecord, BookingRepository, NewBooking } from "./schema";
 
 type DbExecutor = any;
@@ -86,11 +87,16 @@ export class DrizzleBookingRepository implements BookingRepository {
     const rows = await this.db.update(bookings).set({ ...patch, updatedAt: new Date() }).where(eq(bookings.id, id)).returning();
     return rows[0] ? booking(rows[0]) : null;
   }
+
+  async cancelActiveRescheduleRequests(bookingId: string) {
+    const rows = await this.db.update(rescheduleRequests).set({ status: "cancelled", updatedAt: new Date() }).where(and(eq(rescheduleRequests.bookingId, bookingId), inArray(rescheduleRequests.status, ["pending", "held"]))).returning({ id: rescheduleRequests.id });
+    return rows.length;
+  }
 }
 
 export function createBookingRepository(db: Database): BookingRepository { return new DrizzleBookingRepository(db); }
 
-type Snapshot = { bookings: BookingRecord[]; schedules: ScheduleRecord[]; subscriptions: SubscriptionRecord[] };
+type Snapshot = { bookings: BookingRecord[]; schedules: ScheduleRecord[]; subscriptions: SubscriptionRecord[]; requests: RescheduleRequestRecord[] };
 function cloneBooking(item: BookingRecord): BookingRecord { return { ...item, bookedAt: new Date(item.bookedAt), cancelledAt: item.cancelledAt ? new Date(item.cancelledAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }; }
 function cloneSchedule(item: ScheduleRecord): ScheduleRecord { return { ...item, startsAt: new Date(item.startsAt), endsAt: new Date(item.endsAt), createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }; }
 function cloneSubscription(item: SubscriptionRecord): SubscriptionRecord { return { ...item, startsAt: new Date(item.startsAt), expiresAt: new Date(item.expiresAt), createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }; }
@@ -99,6 +105,7 @@ function cloneSubscription(item: SubscriptionRecord): SubscriptionRecord { retur
 export class InMemoryBookingRepository implements BookingRepository {
   readonly databaseEnforcesBookingInvariants = false;
   readonly bookings: BookingRecord[];
+  readonly rescheduleRequests: RescheduleRequestRecord[] = [];
   private transactionTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly catalog: CatalogRepository, private readonly payments: PaymentRepository, sharedBookings?: CatalogBookingRecord[]) {
@@ -112,10 +119,11 @@ export class InMemoryBookingRepository implements BookingRepository {
     await previous;
     const schedules = await this.catalog.listSchedules();
     const subscriptions = await this.payments.listSubscriptions();
-    const snapshot: Snapshot = { bookings: this.bookings.map(cloneBooking), schedules: schedules.map(cloneSchedule), subscriptions: subscriptions.map(cloneSubscription) };
+    const snapshot: Snapshot = { bookings: this.bookings.map(cloneBooking), schedules: schedules.map(cloneSchedule), subscriptions: subscriptions.map(cloneSubscription), requests: this.rescheduleRequests.map((item) => ({ ...item })) };
     try { return await fn(this); }
     catch (error) {
       this.bookings.splice(0, this.bookings.length, ...snapshot.bookings);
+      this.rescheduleRequests.splice(0, this.rescheduleRequests.length, ...snapshot.requests);
       for (const old of snapshot.schedules) await this.catalog.updateSchedule(old.id, { status: old.status });
       for (const old of snapshot.subscriptions) await this.payments.updateSubscription(old.id, { usedSessions: old.usedSessions });
       throw error;
@@ -140,4 +148,9 @@ export class InMemoryBookingRepository implements BookingRepository {
   }
   async insertBooking(input: NewBooking) { const now = new Date(); const item: BookingRecord = { ...input, id: createId(), status: "booked", bookedAt: now, cancelledAt: null, createdAt: now, updatedAt: now }; this.bookings.push(item); return cloneBooking(item); }
   async updateBooking(id: string, patch: BookingPatch) { const item = this.bookings.find((value) => value.id === id); if (!item) return null; Object.assign(item, patch, { updatedAt: new Date() }); return cloneBooking(item); }
+  async cancelActiveRescheduleRequests(bookingId: string) {
+    const active = this.rescheduleRequests.filter((item) => item.bookingId === bookingId && (item.status === "pending" || item.status === "held"));
+    for (const item of active) Object.assign(item, { status: "cancelled", updatedAt: new Date() });
+    return active.length;
+  }
 }

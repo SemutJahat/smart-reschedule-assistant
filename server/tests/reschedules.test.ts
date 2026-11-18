@@ -82,6 +82,20 @@ test("rejects same, cancelled, full, and duplicate requests", async () => {
   expect((await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }))).status).toBe(409);
 });
 
+test("rejects requests and approvals for targets that have already started", async () => {
+  const target = catalog.schedules.find((item) => item.id === targetId)!;
+  const futureStart = target.startsAt;
+  target.startsAt = new Date(Date.now() - 3_600_000);
+  expect((await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }))).status).toBe(409);
+  target.startsAt = futureStart;
+  const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  expect(created.status).toBe(200);
+  const request = await created.json() as { id: string };
+  target.startsAt = new Date(Date.now() - 3_600_000);
+  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "approved" }, adminToken) }))).status).toBe(409);
+  expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(sourceId);
+});
+
 test("held requests can be rejected without moving the booking", async () => {
   const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
   const request = await created.json() as { id: string };
@@ -108,4 +122,25 @@ test("approved request moves booking, updates both schedule statuses, and record
   expect(reviewed.status).toBe(200); expect(body.status).toBe("approved"); expect(body.reviewedBy).toBeDefined(); expect(body.adminNote).toBe("Approved"); expect((body as { chatSessionId?: string | null }).chatSessionId).toBeNull();
   expect(catalog.bookings.find((item) => item.id === bookingId)?.scheduleId).toBe(targetId);
   expect(await catalog.countBooked(sourceId)).toBe(0); expect(await catalog.countBooked(targetId)).toBe(1);
+});
+
+test("cancelling a booking cancels its pending reschedule request", async () => {
+  const created = await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }));
+  const request = await created.json() as { id: string };
+  expect((await app.handle(new Request(`http://localhost/bookings/${bookingId}/cancel`, { method: "PATCH", headers: { authorization: `Bearer ${customerToken}` } }))).status).toBe(200);
+  const own = await (await app.handle(new Request("http://localhost/reschedule-requests/me", { headers: { authorization: `Bearer ${customerToken}` } }))).json() as { id: string; status: string }[];
+  expect(own.find((item) => item.id === request.id)?.status).toBe("cancelled");
+  const review = await app.handle(new Request(`http://localhost/reschedule-requests/${request.id}/review`, { method: "PATCH", ...json({ decision: "approved" }, adminToken) }));
+  expect(review.status).toBe(409);
+});
+
+test("cancelling a booking cancels its held reschedule request but leaves decided ones", async () => {
+  const first = await (await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "x" }, customerToken) }))).json() as { id: string };
+  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${first.id}/review`, { method: "PATCH", ...json({ decision: "rejected", adminNote: "No" }, adminToken) }))).status).toBe(200);
+  const second = await (await app.handle(new Request("http://localhost/reschedule-requests", { method: "POST", ...json({ bookingId, requestedScheduleId: targetId, customerMessage: "y" }, customerToken) }))).json() as { id: string };
+  expect((await app.handle(new Request(`http://localhost/reschedule-requests/${second.id}/review`, { method: "PATCH", ...json({ decision: "held" }, adminToken) }))).status).toBe(200);
+  expect((await app.handle(new Request(`http://localhost/bookings/${bookingId}/cancel`, { method: "PATCH", headers: { authorization: `Bearer ${adminToken}` } }))).status).toBe(200);
+  const all = await (await app.handle(new Request("http://localhost/reschedule-requests", { headers: { authorization: `Bearer ${adminToken}` } }))).json() as { id: string; status: string }[];
+  expect(all.find((item) => item.id === first.id)?.status).toBe("rejected");
+  expect(all.find((item) => item.id === second.id)?.status).toBe("cancelled");
 });

@@ -44,6 +44,7 @@ export class RescheduleService {
         if (!target) throw new AppError("NOT_FOUND", "Target schedule not found", 404);
         if (target.id === booking.scheduleId) throw new AppError("CONFLICT", "Target schedule must differ from the current schedule", 409);
         if (target.status === "cancelled") throw new AppError("CONFLICT", "Target schedule is cancelled", 409);
+        if (target.startsAt <= new Date()) throw new AppError("CONFLICT", "Target schedule has already started", 409);
         if ((await tx.countBooked(target.id)) >= target.capacity) throw new AppError("CONFLICT", "Target schedule is full", 409);
         if ((await tx.listRequests({ memberId: member.id })).some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) {
           throw new AppError("CONFLICT", "An active reschedule request already exists", 409);
@@ -86,6 +87,7 @@ export class RescheduleService {
           const target = await tx.findSchedule(request.toScheduleId, true);
           if (!target) throw new AppError("NOT_FOUND", "Target schedule not found", 404);
           if (target.status === "cancelled") throw new AppError("CONFLICT", "Target schedule is cancelled", 409);
+          if (target.startsAt <= new Date()) throw new AppError("CONFLICT", "Target schedule has already started", 409);
           if ((await tx.countBooked(target.id)) >= target.capacity) throw new AppError("CONFLICT", "Target schedule is full", 409);
           await tx.updateBookingSchedule(booking.id, target.id);
           await repairSchedule(tx, request.fromScheduleId);

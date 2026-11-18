@@ -43,7 +43,7 @@ export interface ChatServiceContractDependencies {
   eligibility: { subscriptionStatus: SubscriptionRecord["status"]; subscriptionExpiresAt: Date; remainingQuota: number };
   booking: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status">;
   sourceSchedule: Pick<ScheduleRecord, "id" | "serviceId">;
-  candidates: Array<Pick<ScheduleRecord, "id" | "serviceId" | "capacity"> & { booked: number; status?: ScheduleRecord["status"] }>;
+  candidates: Array<Pick<ScheduleRecord, "id" | "serviceId" | "capacity"> & { booked: number; status?: ScheduleRecord["status"]; startsAt?: Date }>;
 }
 
 export interface LegacyRescheduleAdapter {
@@ -285,7 +285,7 @@ export class ChatService {
 
   private scheduleFromPartial(value: Pick<ScheduleRecord, "id" | "serviceId"> & Partial<Pick<ScheduleRecord, "capacity" | "status" | "title" | "coachId" | "startsAt" | "endsAt">>): ScheduleRecord {
     const now = new Date();
-    return { id: value.id, title: value.title ?? "Schedule", coachId: value.coachId ?? "coach", serviceId: value.serviceId, startsAt: value.startsAt ?? now, endsAt: value.endsAt ?? new Date(now.getTime() + 3600000), capacity: value.capacity ?? 1, status: value.status ?? "available", createdAt: now, updatedAt: now };
+    return { id: value.id, title: value.title ?? "Schedule", coachId: value.coachId ?? "coach", serviceId: value.serviceId, startsAt: value.startsAt ?? new Date(now.getTime() + 86400000), endsAt: value.endsAt ?? new Date(now.getTime() + 90000000), capacity: value.capacity ?? 1, status: value.status ?? "available", createdAt: now, updatedAt: now };
   }
 
   private bookingFromPartial(value: Pick<BookingRecord, "id" | "memberId" | "scheduleId" | "status"> & Partial<BookingRecord>): BookingRecord {
@@ -344,8 +344,9 @@ export class ChatService {
     const valid = activeSubscription(subscription, member.id);
     const schedules = valid ? await this.dependencies.catalog.listSchedules() : [];
     const candidateSchedules = [];
+    const now = new Date();
     for (const schedule of schedules) {
-      if (schedule.id === sourceSchedule.id || schedule.status === "cancelled" || schedule.status === "full" || schedule.serviceId !== sourceSchedule.serviceId) continue;
+      if (schedule.startsAt <= now || schedule.id === sourceSchedule.id || schedule.status === "cancelled" || schedule.status === "full" || schedule.serviceId !== sourceSchedule.serviceId) continue;
       const booked = await this.dependencies.catalog.countBooked(schedule.id);
       if (booked >= schedule.capacity) continue;
       candidateSchedules.push({ schedule, remainingCapacity: Math.max(0, schedule.capacity - booked) });
@@ -485,6 +486,7 @@ export class ChatService {
         const target = await tx.booking.findSchedule(scheduleId, true);
         if (!target) throw notFound("Target schedule not found");
         if (target.id === booking.scheduleId || target.status === "cancelled" || target.status === "full" || target.serviceId !== source.serviceId) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule is not available");
+        if (target.startsAt <= new Date()) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule has already started");
         if ((await tx.booking.countBooked(target.id)) >= target.capacity) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule is full");
          const requests = await tx.reschedule.listRequests({ memberId: member.id });
         if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");

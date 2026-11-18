@@ -85,7 +85,9 @@ export class BookingService {
       if (!current) throw new AppError("NOT_FOUND", "Booking not found", 404);
       if (current.status !== "booked") throw new AppError("CONFLICT", `Cannot cancel a ${current.status} booking`, 409);
       if (!subscription) throw new AppError("NOT_FOUND", "Subscription not found", 404);
+      if (user.role !== "admin" && schedule && schedule.startsAt <= new Date()) throw new AppError("CONFLICT", "Booking has already started", 409);
       const updated = await tx.updateBooking(id, { status: "cancelled", cancelledAt: new Date() });
+      await tx.cancelActiveRescheduleRequests(id);
        if (!tx.databaseEnforcesBookingInvariants) await tx.updateSubscriptionUsed(subscription.id, Math.max(0, subscription.usedSessions - 1));
       if (schedule && schedule.status === "full") await tx.updateScheduleStatus(schedule.id, "available");
         return serialize(updated!);

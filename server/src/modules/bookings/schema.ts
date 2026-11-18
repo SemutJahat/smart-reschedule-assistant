@@ -47,6 +47,7 @@ export interface BookingRepository {
   listBookings(filters?: BookingFilters): Promise<BookingRecord[]>;
   insertBooking(input: NewBooking): Promise<BookingRecord>;
   updateBooking(id: string, patch: BookingPatch): Promise<BookingRecord | null>;
+  cancelActiveRescheduleRequests(bookingId: string): Promise<number>;
 }
 
 export type BookingContext = {

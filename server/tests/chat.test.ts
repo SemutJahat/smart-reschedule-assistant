@@ -355,13 +355,15 @@ test("retry resumes after successful analysis persistence fails", async () => {
   expect(chat.messages.filter((item) => item.role === "user")).toHaveLength(1);
 });
 
-test("context filters cancelled, full, wrong-service, capacity-full, and current schedules", async () => {
+test("context filters past, cancelled, full, wrong-service, capacity-full, and current schedules", async () => {
   const cancelled = "00000000-0000-4000-8000-000000000030";
   const full = "00000000-0000-4000-8000-000000000031";
   const wrong = "00000000-0000-4000-8000-000000000032";
   const capacityFull = "00000000-0000-4000-8000-000000000033";
   const valid = "00000000-0000-4000-8000-000000000034";
+  const past = "00000000-0000-4000-8000-000000000035";
   const candidates = [
+    { id: past, serviceId, capacity: 2, booked: 0, startsAt: new Date(Date.now() - 3_600_000) },
     { id: sourceScheduleId, serviceId, capacity: 2, booked: 0 },
     { id: cancelled, serviceId, capacity: 2, booked: 0, status: "cancelled" as const },
     { id: full, serviceId, capacity: 2, booked: 0, status: "full" as const },
@@ -435,11 +437,12 @@ test("no candidates return NO_AVAILABLE_SCHEDULE without calling AI", async () =
   expect(reschedule.requests).toHaveLength(0);
 });
 
-test("stale full, cancelled, and capacity-exhausted targets are unavailable at confirmation", async () => {
+test("stale full, cancelled, capacity-exhausted, and started targets are unavailable at confirmation", async () => {
   const staleCases: Array<{ label: string; mutate: (candidate: ChatServiceContractDependencies["candidates"][number]) => void }> = [
     { label: "full", mutate: (candidate) => { candidate.status = "full"; } },
     { label: "cancelled", mutate: (candidate) => { candidate.status = "cancelled"; } },
     { label: "capacity", mutate: (candidate) => { candidate.booked = candidate.capacity; } },
+    { label: "started", mutate: (candidate) => { candidate.startsAt = new Date(Date.now() - 60_000); } },
   ];
   for (const staleCase of staleCases) {
     const candidates: ChatServiceContractDependencies["candidates"] = [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0, status: "available" }];

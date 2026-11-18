@@ -124,3 +124,17 @@ test("failed booking transaction rolls back its writes", async () => {
   expect(catalog.bookings).toHaveLength(0);
   expect(catalog.schedules[0]?.status).toBe("available");
 });
+
+test("customers cannot cancel a session that has already started, admins still can", async () => {
+  const created = await app.handle(new Request("http://localhost/bookings", { method: "POST", ...json({ scheduleId, subscriptionId }, customerToken) }));
+  const booking = await created.json() as { id: string };
+  const schedule = catalog.schedules[0]!;
+  schedule.startsAt = new Date(Date.now() - 60_000); schedule.endsAt = new Date(Date.now() + 3_600_000);
+  const rejected = await app.handle(new Request(`http://localhost/bookings/${booking.id}/cancel`, { method: "PATCH", ...json({}, customerToken) }));
+  expect(rejected.status).toBe(409);
+  expect(catalog.bookings.find((item) => item.id === booking.id)?.status).toBe("booked");
+  expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(1);
+  const byAdmin = await app.handle(new Request(`http://localhost/bookings/${booking.id}/cancel`, { method: "PATCH", ...json({}, adminToken) }));
+  expect(byAdmin.status).toBe(200);
+  expect(payments.subscriptions.find((item) => item.id === subscriptionId)?.usedSessions).toBe(0);
+});
