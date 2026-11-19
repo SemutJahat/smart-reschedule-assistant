@@ -225,6 +225,17 @@ test("confirmation cannot use a schedule different from the proposal", async () 
   await expect(service.confirmSchedule(user, session.id, otherScheduleId)).rejects.toMatchObject({ code: "CONFIRMATION_MISMATCH" });
 });
 
+test("confirmation accepts any schedule recommended in the latest turn", async () => {
+  const secondScheduleId = "00000000-0000-4000-8000-000000000009";
+  const multi = makeService(chat, ai, coordinator, reschedule, [{ id: candidateScheduleId, serviceId, capacity: 2, booked: 0 }, { id: secondScheduleId, serviceId, capacity: 2, booked: 0 }]);
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId, secondScheduleId], nextState: "awaiting_confirmation" };
+  const session = await multi.createSession(user, bookingId);
+  const turn = await multi.sendMessage(user, session.id, { message: "Move me" });
+  expect(turn.session.proposedScheduleId).toBe(candidateScheduleId);
+  const result = await multi.confirmSchedule(user, session.id, secondScheduleId);
+  expect(result.request.toScheduleId).toBe(secondScheduleId);
+});
+
 test("duplicate clientMessageId returns the original turn without another user message", async () => {
   ai.result.recommendedScheduleIds = [candidateScheduleId];
   const session = await service.createSession(user, bookingId);
@@ -470,10 +481,30 @@ test("non-booked bookings cannot create chat sessions", async () => {
   await expect(service.createSession(user, bookingId)).rejects.toMatchObject({ code: "BOOKING_STATE_CHANGED" });
 });
 
-test("duplicate active chat sessions are rejected", async () => {
-  await service.createSession(user, bookingId);
-  await expect(service.createSession(user, bookingId)).rejects.toMatchObject({ code: "CONFLICT" });
+test("creating a session again returns the existing active session", async () => {
+  const first = await service.createSession(user, bookingId);
+  const second = await service.createSession(user, bookingId);
+  expect(second.id).toBe(first.id);
   expect(chat.sessions).toHaveLength(1);
+});
+
+test("creating a session again returns the session awaiting confirmation with its proposal", async () => {
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const first = await service.createSession(user, bookingId);
+  await service.sendMessage(user, first.id, { message: "move" });
+  const again = await service.createSession(user, bookingId);
+  expect(again.id).toBe(first.id);
+  expect(again.status).toBe("awaiting_confirmation");
+  expect(again.proposedScheduleId).toBe(candidateScheduleId);
+  expect(chat.sessions).toHaveLength(1);
+});
+
+test("a submitted session with a pending request still blocks a new session", async () => {
+  ai.result = { ...ai.result, intent: "Reschedule", recommendedScheduleIds: [candidateScheduleId], nextState: "awaiting_confirmation" };
+  const first = await service.createSession(user, bookingId);
+  await service.sendMessage(user, first.id, { message: "move" });
+  await service.confirmSchedule(user, first.id, candidateScheduleId);
+  await expect(service.createSession(user, bookingId)).rejects.toMatchObject({ code: "CONFLICT" });
 });
 
 test("active reschedule requests are checked inside session creation transaction", async () => {

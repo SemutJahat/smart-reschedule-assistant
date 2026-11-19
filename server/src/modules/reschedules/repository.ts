@@ -81,6 +81,11 @@ export class DrizzleRescheduleRepository implements RescheduleRepository {
     const rows = await this.db.select({ count: count() }).from(bookings).where(and(eq(bookings.scheduleId, scheduleId), eq(bookings.status, "booked")));
     return Number(rows[0]?.count ?? 0);
   }
+
+  async findActiveBookingForMemberSchedule(memberId: string, scheduleId: string) {
+    const rows = await this.db.select().from(bookings).where(and(eq(bookings.memberId, memberId), eq(bookings.scheduleId, scheduleId), eq(bookings.status, "booked"))).limit(1);
+    return rows[0] ? bookingRecord(rows[0]) : null;
+  }
 }
 
 export function createRescheduleRepository(db: Database): RescheduleRepository {
@@ -131,4 +136,5 @@ export class InMemoryRescheduleRepository implements RescheduleRepository {
   findSchedule(id: string, lock = false) { return this.bookings.findSchedule(id, lock); }
   updateScheduleStatus(id: string, status: ScheduleRecord["status"]) { return this.bookings.updateScheduleStatus(id, status); }
   countBooked(scheduleId: string) { return this.bookings.countBooked(scheduleId); }
+  findActiveBookingForMemberSchedule(memberId: string, scheduleId: string) { return this.bookings.findActiveByMemberSchedule(memberId, scheduleId); }
 }

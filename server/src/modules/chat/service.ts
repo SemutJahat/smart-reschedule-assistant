@@ -261,6 +261,8 @@ export class ChatService {
           return candidate ? this.scheduleFromPartial(candidate) : null;
         },
         countBooked: async (id: string) => dependencies.candidates.find((item) => item.id === id)?.booked ?? 0,
+        findActiveByMemberSchedule: async () => null,
+        listBookings: async () => [],
       } as unknown as BookingRepository;
       const contractPayment = { findSubscription: async () => this.subscriptionFromContract(dependencies) } as unknown as PaymentRepository;
       this.dependencies = {
@@ -323,7 +325,11 @@ export class ChatService {
         if (!await tx.booking.findSchedule(booking.scheduleId, true)) throw coded("BOOKING_STATE_CHANGED", "Booking source schedule no longer exists");
         const requests = await tx.reschedule.listRequests({ memberId: member.id });
         if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");
-        if (await tx.chat.findActiveSession(booking.id)) throw conflict("An active chat session already exists");
+        const existing = await tx.chat.findActiveSession(booking.id);
+        if (existing) {
+          if (existing.memberId !== member.id) throw conflict("An active chat session already exists");
+          return existing;
+        }
         return tx.chat.insertSession({ memberId: member.id, bookingId: booking.id, sourceScheduleId: booking.scheduleId, currentIntent: null, status: "active" });
       });
       return serializeSession(session);
@@ -343,10 +349,11 @@ export class ChatService {
     const subscription = await this.eligibility(member.id, booking);
     const valid = activeSubscription(subscription, member.id);
     const schedules = valid ? await this.dependencies.catalog.listSchedules() : [];
+    const alreadyBooked = new Set((await this.dependencies.booking.listBookings({ memberId: member.id, status: "booked" })).map((item) => item.scheduleId));
     const candidateSchedules = [];
     const now = new Date();
     for (const schedule of schedules) {
-      if (schedule.startsAt <= now || schedule.id === sourceSchedule.id || schedule.status === "cancelled" || schedule.status === "full" || schedule.serviceId !== sourceSchedule.serviceId) continue;
+      if (schedule.startsAt <= now || schedule.id === sourceSchedule.id || alreadyBooked.has(schedule.id) || schedule.status === "cancelled" || schedule.status === "full" || schedule.serviceId !== sourceSchedule.serviceId) continue;
       const booked = await this.dependencies.catalog.countBooked(schedule.id);
       if (booked >= schedule.capacity) continue;
       candidateSchedules.push({ schedule, remainingCapacity: Math.max(0, schedule.capacity - booked) });
@@ -475,7 +482,11 @@ export class ChatService {
         if (!session) throw notFound("Chat session not found");
         if (session.memberId !== member.id) throw forbidden("Chat session does not belong to the member");
         if (session.status !== "awaiting_confirmation") throw coded("CHAT_SESSION_CLOSED", "Chat session is not awaiting confirmation");
-        if (session.proposedScheduleId !== scheduleId) throw new AppError("CONFIRMATION_MISMATCH", "Confirmation does not match the proposed schedule", 409);
+        const messages = await tx.chat.listMessages(session.id);
+        const lastUserMessage = [...messages].reverse().find((item) => item.role === "user");
+        const latestAnalysis = lastUserMessage ? await tx.chat.findAnalysisByMessageId(lastUserMessage.id) : null;
+        const allowed = new Set([session.proposedScheduleId, ...(latestAnalysis?.status === "completed" ? latestAnalysis.recommendedScheduleIds : [])]);
+        if (!allowed.has(scheduleId)) throw new AppError("CONFIRMATION_MISMATCH", "Confirmation does not match the proposed schedule", 409);
         const booking = await tx.booking.findBooking(session.bookingId, true);
         if (!booking) throw notFound("Booking not found");
         if (booking.memberId !== member.id) throw forbidden("Booking does not belong to the member");
@@ -488,12 +499,12 @@ export class ChatService {
         if (target.id === booking.scheduleId || target.status === "cancelled" || target.status === "full" || target.serviceId !== source.serviceId) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule is not available");
         if (target.startsAt <= new Date()) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule has already started");
         if ((await tx.booking.countBooked(target.id)) >= target.capacity) throw coded("SCHEDULE_UNAVAILABLE", "Target schedule is full");
+        if (await tx.booking.findActiveByMemberSchedule(member.id, target.id)) throw coded("SCHEDULE_UNAVAILABLE", "Member already has a booking on the target schedule");
          const requests = await tx.reschedule.listRequests({ memberId: member.id });
         if (requests.some((item) => item.bookingId === booking.id && (item.status === "pending" || item.status === "held"))) throw conflict("An active reschedule request already exists");
         const subscription = await tx.payment.findSubscription(booking.subscriptionId, true);
         if (!activeSubscription(subscription, member.id)) throw conflict("Subscription is not eligible for rescheduling");
-        const messages = await tx.chat.listMessages(session.id);
-        const customerMessage = [...messages].reverse().find((item) => item.role === "user")?.content ?? "Please confirm this reschedule.";
+        const customerMessage = lastUserMessage?.content ?? "Please confirm this reschedule.";
         const request = await tx.reschedule.insertRequest({ bookingId: booking.id, memberId: member.id, chatSessionId: session.id, fromScheduleId: booking.scheduleId, toScheduleId: target.id, customerMessage });
         const updated = await tx.chat.updateSession(session.id, { status: "submitted", confirmedAt: new Date() });
         if (!updated) throw internal();
