@@ -219,11 +219,11 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
     RIWAYAT PERCAKAPAN:
     {full_chat_history}
 
-    PENTING SOAL WAKTU: Semua waktu di atas sudah dalam WIB (waktu lokal gym). Pagi = 05:00-11:00, siang = 11:00-15:00, sore = 15:00-18:00, malam = 18:00-22:00. Hanya usulkan kandidat yang tanggal DAN rentang jamnya cocok dengan permintaan user. Jika tidak ada kandidat yang cocok, kosongkan recommendedScheduleIds, jelaskan bahwa jadwal tersebut tidak tersedia, lalu sebutkan pilihan terdekat yang ada tanpa mengusulkannya.
+    PENTING SOAL WAKTU: Semua waktu di atas sudah dalam WIB (waktu lokal gym). Pagi = 05:00-11:00, siang = 11:00-15:00, sore = 15:00-18:00, malam = 18:00-22:00. Utamakan kandidat yang tanggal DAN rentang jamnya cocok dengan permintaan user. Jika tidak ada kandidat yang cocok, jelaskan bahwa jadwal yang diminta tidak tersedia, lalu usulkan kandidat yang waktunya paling dekat dengan permintaan user sebagai pilihan pengganti.
 
     ATURAN JSON KETAT:
     1. "intent": Pilih SATU dari: ["Reschedule", "Cancel", "Schedule inquiry", "Confirmation", "Other"].
-    2. "recommendedScheduleIds": Jika "intent" adalah Reschedule DAN ada jadwal yang cocok dengan permintaan waktu/hari user, masukkan ID jadwalnya (maksimal 1). JIKA TIDAK ADA YANG COCOK ATAU BUKAN RESCHEDULE, KOSONGKAN []. JANGAN MENGARANG ID.
+    2. "recommendedScheduleIds": Jika "intent" adalah Reschedule, masukkan ID semua jadwal yang kamu sebutkan sebagai pilihan di "reply" (maksimal 3), urut dari yang paling cocok. Jika ada yang cocok dengan permintaan user, masukkan yang cocok. Jika tidak ada yang cocok tetapi ada kandidat lain, masukkan kandidat terdekat. Setiap jadwal yang disebut sebagai pilihan di "reply" WAJIB ada di daftar ini. Kosongkan [] hanya jika tidak ada kandidat sama sekali atau intent bukan Reschedule. JANGAN MENGARANG ID.
     3. "extracted": JSON object berisi (waktu, hari, alasan). Jika kosong, isi {{}}.
     4. "reply": Balas pesan user. Jika mengusulkan jadwal, sebutkan nama kelas dan waktunya sesuai angka jam di kandidat. WAJIB balas dengan BAHASA YANG SAMA dengan pesan user.
     5. "confidence": Float 0.0 - 1.0.
@@ -231,7 +231,7 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
     7. Jika STATUS SESI adalah awaiting_confirmation dan pesan terakhir user menyetujui usulan, gunakan intent Confirmation. Jika user meminta jadwal lain, gunakan intent Reschedule.
     8. "reply" harus teks biasa tanpa markdown dan tidak boleh menyebut ID jadwal.
     9. Jangan menyatakan booking sudah berpindah. Perpindahan baru terjadi setelah admin menyetujui permintaan.
-    10. Jika mengusulkan jadwal, "reply" wajib meminta konfirmasi customer.
+    10. Jika mengusulkan jadwal, "reply" wajib meminta customer memilih salah satu pilihan yang ditampilkan.
     """
 
     try:
@@ -256,7 +256,7 @@ def analyze_reschedule_context(context: dict, model_name: str = GEMINI_MODEL, mo
 
     raw_recommended_ids = llm_output.get("recommendedScheduleIds", [])
     if isinstance(raw_recommended_ids, list):
-        final_recommended_ids = [sid for sid in raw_recommended_ids if sid in valid_candidate_ids]
+        final_recommended_ids = list(dict.fromkeys(sid for sid in raw_recommended_ids if sid in valid_candidate_ids))[:3]
     else:
         final_recommended_ids = []
 
