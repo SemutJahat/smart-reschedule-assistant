@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { ScheduleCard } from "@/components/shared/ScheduleCard";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,10 @@ export function ProposedSlotList() {
   const {
     currentAnalysis,
     sessionStatus,
-    proposedScheduleId,
     isConfirming,
     confirmSchedule,
   } = useChatStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (!currentAnalysis || currentAnalysis.recommendedSchedules.length === 0) {
     return null;
@@ -31,7 +32,7 @@ export function ProposedSlotList() {
 
       <div className="flex flex-col gap-4">
         {currentAnalysis.recommendedSchedules.map((schedule) => {
-          const isProposed = schedule.id === proposedScheduleId;
+          const isSelected = isConfirming && selectedId === schedule.id;
           return (
             <ScheduleCard
               key={schedule.id}
@@ -44,12 +45,15 @@ export function ProposedSlotList() {
               bookedCount={schedule.bookedCount}
               status="available"
               actionButton={
-                canConfirm && isProposed ? (
+                canConfirm ? (
                   <Button
                     className="w-full bg-[#1E293B] hover:bg-slate-800 text-white mt-3"
                     disabled={isConfirming}
-                    onClick={() => confirmSchedule(schedule.id)}>
-                    {isConfirming ? (
+                    onClick={() => {
+                      setSelectedId(schedule.id);
+                      void confirmSchedule(schedule.id);
+                    }}>
+                    {isSelected ? (
                       <Loader2 className="animate-spin" size={14} />
                     ) : (
                       "Pilih slot ini"
