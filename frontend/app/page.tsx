@@ -1,50 +1,72 @@
-import Image from "next/image";
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Suspense } from "react";
+import type { Metadata } from "next";
+import { PublicNavbar } from "@/components/layout/PublicNavbar";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { LandingPackagesBridge } from "@/components/layout/LandingPackagesBridge";
+import { HeroSection } from "@/components/sections/HeroSection";
+import { AudienceSection } from "@/components/sections/AudienceSection";
+import { FeaturesBentoSection } from "@/components/sections/FeaturesBentoSection";
+import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
+import { CtaSection } from "@/components/sections/CtaSection";
+import { PackageCardShimmer } from "@/components/shared/ShimmerSkeleton";
+import { getPublicActivePackages } from "@/lib/api/public-packages";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Gymnasyum — Gym, Private Coaching & Smart Reschedule Assistant",
+  description:
+    "Latihan bersama coach pribadi dengan jadwal tetap fleksibel. Pesan sesi, pantau sisa kuota paket, dan pindah jadwal cukup lewat chat.",
+  metadataBase: new URL("https://pastiviral.com"),
+  openGraph: {
+    title: "Gymnasyum — Latihan Bersama Coach Pribadi, Jadwal Tetap Fleksibel",
+    description:
+      "Pesan sesi latihan, pantau sisa kuota paket secara transparan, dan ajukan pindah jadwal cukup lewat asisten chat.",
+    url: "https://pastiviral.com",
+    siteName: "Gymnasyum",
+    locale: "id_ID",
+    type: "website",
+    images: [
+      {
+        url: "/bg-gymnasyum.webp",
+        width: 1200,
+        height: 630,
+        alt: "Gymnasyum Studio & Smart Reschedule Assistant",
+      },
+    ],
+  },
+};
+
+async function DynamicPackagesSection() {
+  const packagesResult = await getPublicActivePackages();
+  return <LandingPackagesBridge initialResult={packagesResult} />;
+}
+
+function PackagesFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] px-4 py-8">
-      <div className="w-full max-w-md p-8 bg-white rounded-xl shadow-lg border border-[#E2E8F0]">
-        <div className="text-center mb-8 flex flex-col items-center">
-          <div className="relative w-20 h-20 mb-4">
-            <Image
-              src="/logo-gymnasyum.webp"
-              alt="Gymnasyum Logo"
-              fill
-              sizes="80px"
-              className="object-contain"
-              priority
-            />
-          </div>
-          <h1 className="text-2xl font-bold text-[#1E293B]">
-            Selamat Datang di Gymnasyum
-          </h1>
-          <p className="text-sm text-[#64748B] mt-1">
-            Masuk ke akun Anda atau daftar untuk mulai latihan
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <Link
-            href="/login"
-            className={cn(
-              buttonVariants(),
-              "w-full bg-[#65C466] hover:bg-[#52a653] text-white font-bold h-11 rounded-lg transition-colors",
-            )}>
-            Masuk
-          </Link>
-          <Link
-            href="/register"
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              "w-full border-[#65C466] text-[#52A353] hover:bg-[#65C466]/10 font-bold h-11 rounded-lg transition-colors",
-            )}>
-            Daftar Akun Baru
-          </Link>
-        </div>
+    <section id="paket" className="scroll-mt-24 bg-[#F8FAFC] py-16 sm:py-24">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <PackageCardShimmer count={3} />
       </div>
+    </section>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B]">
+      <PublicNavbar />
+
+      <main>
+        <HeroSection />
+        <AudienceSection />
+        <FeaturesBentoSection />
+        <HowItWorksSection />
+        <Suspense fallback={<PackagesFallback />}>
+          <DynamicPackagesSection />
+        </Suspense>
+        <CtaSection />
+      </main>
+
+      <PublicFooter />
     </div>
   );
 }

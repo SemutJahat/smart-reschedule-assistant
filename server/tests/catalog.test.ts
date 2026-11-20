@@ -33,15 +33,103 @@ beforeEach(async () => {
 
 test("customers can read catalog but cannot write", async () => {
   const customer = await login("customer@example.com");
-  expect((await app.handle(new Request("http://localhost/coaches", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
-  expect((await app.handle(new Request("http://localhost/packages", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
-  expect((await app.handle(new Request("http://localhost/coaches", { method: "POST", ...json({ name: "Nope" }, customer.accessToken) }))).status).toBe(403);
-  expect((await app.handle(new Request("http://localhost/packages", { method: "POST", ...json({ name: "Nope", category: "x", price: 1, totalSessions: 1, validityDays: 1 }, customer.accessToken) }))).status).toBe(403);
-  expect((await app.handle(new Request("http://localhost/schedules"))).status).toBe(401);
-  expect((await app.handle(new Request("http://localhost/coaches"))).status).toBe(401);
-  expect((await app.handle(new Request("http://localhost/packages"))).status).toBe(401);
-  expect((await app.handle(new Request("http://localhost/schedules", { headers: { authorization: `Bearer ${customer.accessToken}` } }))).status).toBe(200);
-  expect((await app.handle(new Request("http://localhost/schedules", { method: "POST", ...json({ title: "Nope", coachId: crypto.randomUUID(), serviceId: crypto.randomUUID(), startsAt: "2030-01-01T10:00:00.000Z", endsAt: "2030-01-01T11:00:00.000Z", capacity: 1 }, customer.accessToken) }))).status).toBe(403);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/coaches", {
+          headers: { authorization: `Bearer ${customer.accessToken}` },
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/packages", {
+          headers: { authorization: `Bearer ${customer.accessToken}` },
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/coaches", {
+          method: "POST",
+          ...json({ name: "Nope" }, customer.accessToken),
+        }),
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/packages", {
+          method: "POST",
+          ...json(
+            {
+              name: "Nope",
+              category: "x",
+              price: 1,
+              totalSessions: 1,
+              validityDays: 1,
+            },
+            customer.accessToken,
+          ),
+        }),
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (await app.handle(new Request("http://localhost/schedules"))).status,
+  ).toBe(401);
+  expect(
+    (await app.handle(new Request("http://localhost/coaches"))).status,
+  ).toBe(401);
+  expect(
+    (await app.handle(new Request("http://localhost/packages"))).status,
+  ).toBe(200);
+  expect(
+    (await app.handle(new Request("http://localhost/packages?status=active")))
+      .status,
+  ).toBe(200);
+  expect(
+    (await app.handle(new Request("http://localhost/packages?status=inactive")))
+      .status,
+  ).toBe(401);
+  expect(
+    (await app.handle(new Request("http://localhost/packages?status=archived")))
+      .status,
+  ).toBe(401);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/schedules", {
+          headers: { authorization: `Bearer ${customer.accessToken}` },
+        }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await app.handle(
+        new Request("http://localhost/schedules", {
+          method: "POST",
+          ...json(
+            {
+              title: "Nope",
+              coachId: crypto.randomUUID(),
+              serviceId: crypto.randomUUID(),
+              startsAt: "2030-01-01T10:00:00.000Z",
+              endsAt: "2030-01-01T11:00:00.000Z",
+              capacity: 1,
+            },
+            customer.accessToken,
+          ),
+        }),
+      )
+    ).status,
+  ).toBe(403);
 });
 
 test("schedule capacity trigger conflicts map to HTTP conflicts", async () => {
